@@ -3171,3 +3171,71 @@ bool mpm::Mesh<Tdim>::assign_nodal_nonlocal_type(int set_id, unsigned dir,
   }
   return status;
 }
+
+// FOR RFT
+//! Compute the plate force (assumes one boundary surface)
+template <unsigned Tdim>
+double mpm::Mesh<Tdim>::compute_plate_force(unsigned phase) {
+  // NOTE THIS IS FOR 2D ONLY
+
+  // use boundary pt set to compute plate normal
+  const auto& start_point = points_[0];
+  const auto& num_points = this->npoints();
+  const auto& end_point = points_[num_points - 1];
+
+  const auto& start_coords = start_point->coordinates();
+  const auto& end_coords = end_point->coordinates();
+
+  VectorDim disp = end_coords - start_coords; // vector in plate plane
+  double norm_squared = disp[0]*disp[0] + disp[1]*disp[1];
+  double length = std::sqrt(norm_squared);
+  disp = disp / length; // rescale to get normalized vector
+
+  // make normal vector by rotating disp 90 deg
+  VectorDim normal_vector = disp;
+  normal_vector[0] = -disp[1];
+  normal_vector[1] = disp[0];
+
+  // make set of nodes adjacent to plate, empty set
+  std::set<std::shared_ptr<NodeBase<Tdim>>> plate_boundary_nodes_set; 
+
+  // populate set with nodes
+  // pseudocode: iterate over points, get node ids, add to set (no duplicates)
+  iterate_over_points(
+    std::bind(&mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set,
+    std::placeholders::_1, plate_boundary_nodes_set));
+
+  // set normal force = 0
+  double normal_force = 0;
+
+  // iterate over nodes in set N
+  #pragma omp parallel for reduction(+:normal_force)
+  for (const auto& node_ptr : plate_boundary_nodes_set) {
+    // node_ptr is a std::shared_ptr<NodeBase<Tdim>>
+
+    // prefactor = 1
+    // if size of node->mpi_ranks() > 1
+      // prefactor = (n-1)/n
+
+    double prefactor = 0;
+    unsigned num_ranks = (node_ptr->mpi_ranks()).size();
+    if (num_ranks == 1) {
+      prefactor = 1;
+    } else if (num_ranks > 1) {
+      prefactor = (num_ranks - 1) / num_ranks;
+    }
+
+    VectorDim node_force = node_ptr->internal_force(phase);
+
+    // take dot product with normal vector to compute normal force contribution
+    double force_contribution = (node_ptr.cwiseProduct(normal_vector))
+
+    // add this to normal force (we have reduction so it's fine)
+    normal_force = normal_force + prefactor*(force_contribution);
+  }
+
+  normal_force = std::abs(normal_force); // sign correction
+  
+  // return normal force
+  return normal_force
+}

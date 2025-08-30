@@ -199,6 +199,11 @@ inline void mpm::MPMSchemeNewmark<Tdim>::compute_particle_kinematics(
       std::bind(&mpm::PointBase<Tdim>::compute_updated_position,
                 std::placeholders::_1, dt_, phase, velocity_update));
 
+  VectorDim normal_plate_force = mesh_->compute_plate_force(phase);
+
+  
+
+  // TODO write to IO
 }
 
 // Update particle stress, strain and volume
@@ -208,22 +213,6 @@ inline void
   // Iterate over each particle to update particle stress and strain
   mesh_->iterate_over_particles(std::bind(
       &mpm::ParticleBase<Tdim>::update_stress_strain, std::placeholders::_1));
-
-  // // calculate stress smoothing
-  // // TODO add handling for when stress_smoothing_ is false (though i guess that's not in this file)
-  // if (true) {
-
-  //   // reset nodal stresses each timestep
-  //   mesh_->iterate_over_nodes(std::bind(
-  //     &mpm::NodeBase<Tdim>::reset_stress, std::placeholders::_1));
-
-  //   // iterate over particles to add stress contributions to nodes
-  //   mesh_->iterate_over_particles(std::bind(
-  //     &mpm::ParticleBase<Tdim>::add_stress_contributions_to_nodes, std::placeholders::_1));
-
-  //   // iterate over particles again to compute their smoothed stresses
-  //   mesh_->iterate_over_particles(std::bind(
-  //     &mpm::ParticleBase<Tdim>::compute_stress_smoothing, std::placeholders::_1));
 }
 
 //! Postcompute nodal kinematics - map mass and momentum to nodes

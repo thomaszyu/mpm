@@ -810,6 +810,11 @@ class Mesh {
   //! UpperBoundary = 4
   bool assign_nodal_nonlocal_type(int set_id, unsigned dir, unsigned node_type);
 
+  //! 
+  //! \param[in] phase phase
+  //! \retval normal_force normal force
+  double compute_plate_force(unsigned phase);
+
   /**@}*/
 
  private:
