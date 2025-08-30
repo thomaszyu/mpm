@@ -1,6 +1,3 @@
-#include <iomanip> // FOR PRINTING POSTPROCESS DATA -- DELETE LATER
-
-
 //! Constructor with id and coordinates
 template <unsigned Tdim>
 mpm::PointDirichletPenalty<Tdim>::PointDirichletPenalty(Index id,
