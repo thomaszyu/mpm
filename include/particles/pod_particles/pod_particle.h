@@ -31,6 +31,10 @@ typedef struct PODParticle {
   // Stresses
   double stress_xx, stress_yy, stress_zz;
   double tau_xy, tau_yz, tau_xz;
+
+  double smoothed_stress_xx, smoothed_stress_yy, smoothed_stress_zz;
+  double smoothed_tau_xy, smoothed_tau_yz, smoothed_tau_xz;
+  
   // Strains
   double strain_xx, strain_yy, strain_zz;
   double gamma_xy, gamma_yz, gamma_xz;

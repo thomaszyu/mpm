@@ -88,6 +88,14 @@ bool mpm::Particle<Tdim>::initialise_particle(PODParticle& particle) {
   this->stress_[5] = particle.tau_xz;
   this->previous_stress_ = stress_;
 
+  // Smoothed Stress
+  this->smoothed_stress_[0] = particle.smoothed_stress_xx;
+  this->smoothed_stress_[1] = particle.smoothed_stress_yy;
+  this->smoothed_stress_[2] = particle.smoothed_stress_zz;
+  this->smoothed_stress_[3] = particle.smoothed_tau_xy;
+  this->smoothed_stress_[4] = particle.smoothed_tau_yz;
+  this->smoothed_stress_[5] = particle.smoothed_tau_xz;
+
   // Strain
   this->strain_[0] = particle.strain_xx;
   this->strain_[1] = particle.strain_yy;
@@ -204,6 +212,7 @@ std::shared_ptr<void> mpm::Particle<Tdim>::pod() const {
   for (unsigned j = 0; j < Tdim; ++j) nsize[j] = size[j];
 
   Eigen::Matrix<double, 6, 1> stress = this->stress_;
+  Eigen::Matrix<double, 6, 1> smoothed_stress = this->smoothed_stress_;
 
   Eigen::Matrix<double, 6, 1> strain = this->strain_;
 
@@ -252,6 +261,13 @@ std::shared_ptr<void> mpm::Particle<Tdim>::pod() const {
   particle_data->tau_xy = stress[3];
   particle_data->tau_yz = stress[4];
   particle_data->tau_xz = stress[5];
+
+  particle_data->smoothed_stress_xx = smoothed_stress[0];
+  particle_data->smoothed_stress_yy = smoothed_stress[1];
+  particle_data->smoothed_stress_zz = smoothed_stress[2];
+  particle_data->smoothed_tau_xy = smoothed_stress[3];
+  particle_data->smoothed_tau_yz = smoothed_stress[4];
+  particle_data->smoothed_tau_xz = smoothed_stress[5];
 
   particle_data->strain_xx = strain[0];
   particle_data->strain_yy = strain[1];
@@ -318,6 +334,7 @@ void mpm::Particle<Tdim>::initialise() {
   strain_.setZero();
   previous_stress_.setZero();
   stress_.setZero();
+  smoothed_stress_.setZero();
   traction_.setZero();
   velocity_.setZero();
   acceleration_.setZero();
@@ -335,6 +352,7 @@ void mpm::Particle<Tdim>::initialise() {
   this->vector_properties_["accelerations"] = [&]() { return acceleration(); };
   this->vector_properties_["normals"] = [&]() { return normal(); };
   this->tensor_properties_["stresses"] = [&]() { return stress(); };
+  this->tensor_properties_["smoothed_stresses"] = [&]() { return smoothed_stress(); };
   this->tensor_properties_["strains"] = [&]() { return strain(); };
 }
 
@@ -884,6 +902,8 @@ void mpm::Particle<Tdim>::compute_stress(double dt) noexcept {
                            &state_variables_[mpm::ParticlePhase::Solid]);
 }
 
+
+
 //! Map body force
 template <unsigned Tdim>
 void mpm::Particle<Tdim>::map_body_force(const VectorDim& pgravity) noexcept {
@@ -1155,6 +1175,26 @@ bool mpm::Particle<Tdim>::map_pressure_to_nodes(unsigned phase) noexcept {
   return status;
 }
 
+
+//! Map particle stress to nodes
+template <unsigned Tdim>
+bool mpm::Particle<Tdim>::map_stress_to_nodes(unsigned phase) noexcept {
+  // Mass is initialized
+  assert(mass_ != std::numeric_limits<double>::max());
+
+  bool status = false;
+  // Check if particle mass is set
+  if (mass_ != std::numeric_limits<double>::max()) {
+    // Map particle stress to nodes
+    for (unsigned i = 0; i < nodes_.size(); ++i) {
+      nodes_[i]->update_mass_stress(phase, shapefn_[i] * mass_ * stress_);
+    }
+    status = true;
+  }
+  return status;
+}
+
+
 // Compute pressure smoothing of the particle based on nodal pressure
 template <unsigned Tdim>
 bool mpm::Particle<Tdim>::compute_pressure_smoothing(unsigned phase) noexcept {
@@ -1180,6 +1220,66 @@ bool mpm::Particle<Tdim>::compute_pressure_smoothing(unsigned phase) noexcept {
   }
   return status;
 }
+
+// Compute stress smoothing of the particle based on nodal stresss
+template <unsigned Tdim>
+bool mpm::Particle<Tdim>::compute_stress_smoothing(unsigned phase) noexcept {
+  // Assert
+  assert(cell_ != nullptr);
+
+  bool status = false;
+  // Check if particle has a valid cell ptr
+  if (cell_ != nullptr) {
+
+    Eigen::Matrix<double, 6, 1> smoothed_stress;
+    smoothed_stress.setZero();
+    
+    // Update particle pressure to interpolated nodal pressure
+    for (unsigned i = 0; i < this->nodes_.size(); ++i) {
+      smoothed_stress.noalias() += shapefn_[i] * nodes_[i]->stress(phase);
+    }
+    smoothed_stress_ = smoothed_stress;
+    status = true;
+  }
+  return status;
+}
+
+
+
+// // Add stress contributions to adjacent nodes
+// template <unsigned Tdim>
+// void mpm::Particle<Tdim>::add_stress_contributions_to_nodes() {
+//   // declare temporary variable stress_contribution
+//   Eigen::Matrix<double, 6, 1> stress_contribution;
+
+//   // iterate over adjacent nodes
+//   for (unsigned i = 0; i < nodes_.size(); ++i) {
+//     stress_contribution.setZero();
+//     // Compute stress contribution
+//     stress_contribution = (shapefn_[i] * mass_ * stress_);
+//     // add to node
+//     nodes_[i]->add_particle_stress(stress_contribution / 
+//       (nodes_[i]->mass(mpm::ParticlePhase::Solid)));
+//   }
+// }
+
+// // Get smoothed stress from particle
+// template <unsigned Tdim>
+// void mpm::Particle<Tdim>::compute_stress_smoothing() {
+//   // Assert
+//   assert(cell_ != nullptr);
+
+//   // Compute the average of the interpolated nodal stresses
+//   Eigen::Matrix<double, 6, 1> stress_sum;
+//   stress_sum.setZero();
+
+//   for (unsigned i = 0; i < nodes_.size(); ++i) {
+//     stress_sum = stress_sum + shapefn_[i]*(nodes_[i]->stress());
+//   }
+//   this->smoothed_stress_ = stress_sum;
+// }
+
+
 
 //! Apply particle velocity constraints
 template <unsigned Tdim>
@@ -1384,6 +1484,8 @@ std::vector<uint8_t> mpm::Particle<Tdim>::serialize() {
   // Stress
   MPI_Pack(stress_.data(), 6, MPI_DOUBLE, data_ptr, data.size(), &position,
            MPI_COMM_WORLD);
+  MPI_Pack(smoothed_stress_.data(), 6, MPI_DOUBLE, data_ptr, data.size(), &position,
+           MPI_COMM_WORLD);
   // Strain
   MPI_Pack(strain_.data(), 6, MPI_DOUBLE, data_ptr, data.size(), &position,
            MPI_COMM_WORLD);
@@ -1489,6 +1591,9 @@ void mpm::Particle<Tdim>::deserialize(
   MPI_Unpack(data_ptr, data.size(), &position, stress_.data(), 6, MPI_DOUBLE,
              MPI_COMM_WORLD);
   this->previous_stress_ = stress_;
+  MPI_Unpack(data_ptr, data.size(), &position, smoothed_stress_.data(), 6, MPI_DOUBLE,
+             MPI_COMM_WORLD);
+
   // Strain
   MPI_Unpack(data_ptr, data.size(), &position, strain_.data(), 6, MPI_DOUBLE,
              MPI_COMM_WORLD);

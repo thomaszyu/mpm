@@ -121,6 +121,8 @@ class MPM {
   Json post_process_;
   //! Logger
   std::shared_ptr<spdlog::logger> console_;
+  //! Stress smoothing computation
+  bool stress_smoothing_ = true;
 };
 }  // namespace mpm
 

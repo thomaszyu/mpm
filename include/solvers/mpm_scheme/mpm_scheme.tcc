@@ -126,6 +126,33 @@ inline void mpm::MPMScheme<Tdim>::pressure_smoothing(unsigned phase) {
                 std::placeholders::_1, phase));
 }
 
+
+//! Stress smoothing
+template <unsigned Tdim>
+inline void mpm::MPMScheme<Tdim>::stress_smoothing(unsigned phase) {
+  // Assign stress to nodes
+  mesh_->iterate_over_particles(
+      std::bind(&mpm::ParticleBase<Tdim>::map_stress_to_nodes,
+                std::placeholders::_1, phase));
+
+#ifdef USE_MPI
+  // Run if there is more than a single MPI task
+  if (mpi_size_ > 1)
+    // MPI all reduce nodal stress
+    mesh_->template nodal_halo_exchange<Eigen::Matrix<double, 6, 1>, 6>(
+        std::bind(&mpm::NodeBase<Tdim>::stress, std::placeholders::_1, phase),
+        std::bind(&mpm::NodeBase<Tdim>::assign_stress, std::placeholders::_1,
+                  phase, std::placeholders::_2));
+#endif
+
+  // Smooth stress over particles
+  mesh_->iterate_over_particles(
+      std::bind(&mpm::ParticleBase<Tdim>::compute_stress_smoothing,
+                std::placeholders::_1, phase));
+}
+
+
+
 // Compute forces
 template <unsigned Tdim>
 inline void mpm::MPMScheme<Tdim>::compute_forces(

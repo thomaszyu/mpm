@@ -289,6 +289,10 @@ class ParticleBase {
   virtual bool map_pressure_to_nodes(
       unsigned phase = mpm::ParticlePhase::Solid) noexcept = 0;
 
+  //! Map particle stress to nodes
+  virtual bool map_stress_to_nodes(
+      unsigned phase = mpm::ParticlePhase::Solid) noexcept = 0;
+
   //! Compute pressure smoothing of the particle based on nodal pressure
   virtual bool compute_pressure_smoothing(
       unsigned phase = mpm::ParticlePhase::Solid) noexcept = 0;
@@ -425,6 +429,12 @@ class ParticleBase {
 
   //! Return previous stress
   virtual Eigen::Matrix<double, 6, 1> previous_stress() const = 0;
+
+  // //! Add stress contributions to adjacent nodes
+  // virtual void add_stress_contributions_to_nodes() = 0;
+
+  //! Compute smoothed stress from nodal stresses
+  virtual bool compute_stress_smoothing(unsigned phase) noexcept = 0;
 
   //! Compute updated position by Newmark scheme
   //! \ingroup Implicit

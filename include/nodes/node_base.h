@@ -148,6 +148,12 @@ class NodeBase {
   virtual void update_mass_pressure(unsigned phase,
                                     double mass_pressure) noexcept = 0;
 
+  //! Update pressure at the nodes from stress
+  //! \param[in] phase Index corresponding to the phase
+  //! \param[in] mass_stress Product of mass x stress of a particle
+  virtual void update_mass_stress(unsigned phase,
+                                    const Eigen::Matrix<double, 6, 1>& mass_stress) noexcept = 0;
+
   //! Apply pressure constraint
   //! \param[in] phase Index corresponding to the phase
   //! \param[in] dt Timestep in analysis
@@ -160,6 +166,12 @@ class NodeBase {
   //! \param[in] phase Index corresponding to the phase
   //! \param[in] mass_pressure Product of mass x pressure of a particle
   virtual void assign_pressure(unsigned phase, double mass_pressure) = 0;
+
+  //! Assign stress at the nodes from particle
+  //! \param[in] update A boolean to update (true) or assign (false)
+  //! \param[in] phase Index corresponding to the phase
+  //! \param[in] mass_stress Product of mass x stress of a particle
+  virtual void assign_stress(unsigned phase, const Eigen::Matrix<double, 6, 1>& mass_stress) = 0;
 
   //! Return pressure at a given node for a given phase
   //! \param[in] phase Index corresponding to the phase
@@ -198,6 +210,16 @@ class NodeBase {
   //! \param[in] dt Time-step
   virtual bool compute_acceleration_velocity(unsigned phase,
                                              double dt) noexcept = 0;
+
+  //! Return averaged particle stress at a given node
+  virtual Eigen::Matrix<double, 6, 1> stress(unsigned phase) = 0;
+
+  //! Set stress to 0 for new calculation each timestep
+  virtual void reset_stress() = 0;
+
+//   //! Add particle stress to nodal stress
+//   //! \param[in] particle_stress_contribution Weighted stress from the particles
+//   virtual void add_particle_stress(const Eigen::Matrix<double, 6, 1>& particle_stress_contribution) = 0;
 
   //! Compute acceleration and velocity with cundall damping factor
   //! \param[in] phase Index corresponding to the phase

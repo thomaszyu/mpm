@@ -5,6 +5,7 @@ void mpm::Node<Tdim, Tdof, Tnphases>::initialise_implicit() noexcept {
   // Specific variables for implicit solver
   inertia_.setZero();
   displacement_.setZero();
+  stress_.setZero();
 }
 
 //! Initialise nodal force during Newton-Raphson iteration

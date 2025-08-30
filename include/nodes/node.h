@@ -140,6 +140,12 @@ class Node : public NodeBase<Tdim> {
   void update_mass_pressure(unsigned phase,
                             double mass_pressure) noexcept override;
 
+  //! Update stress at the nodes from particle
+  //! \param[in] phase Index corresponding to the phase
+  //! \param[in] mass_stress Product of mass x stress of a particle
+  void update_mass_stress(unsigned phase,
+                            const Eigen::Matrix<double, 6, 1>& mass_stress) noexcept override;
+
   //! Assign pressure constraint
   //! \param[in] phase Index corresponding to the phase
   //! \param[in] pressure Applied pressure constraint
@@ -160,6 +166,12 @@ class Node : public NodeBase<Tdim> {
   //! \param[in] phase Index corresponding to the phase
   //! \param[in] mass_pressure Product of mass x pressure of a particle
   void assign_pressure(unsigned phase, double mass_pressure) override;
+
+  //! Assign stress at the nodes from particle
+  //! \param[in] update A boolean to update (true) or assign (false)
+  //! \param[in] phase Index corresponding to the phase
+  //! \param[in] mass_stress Product of mass x stress of a particle
+  void assign_stress(unsigned phase, const Eigen::Matrix<double, 6, 1>& mass_stress) override;
 
   //! Return pressure at a given node for a given phase
   //! \param[in] phase Index corresponding to the phase
@@ -332,11 +344,11 @@ class Node : public NodeBase<Tdim> {
    */
   /**@{*/
   //! Initialise nodal properties for implicit solver
-  //! \ingroup Impolicit
+  //! \ingroup Implicit
   void initialise_implicit() noexcept override;
 
   //! Initialise nodal forces
-  //! \ingroup Impolicit
+  //! \ingroup Implicit
   void initialise_force() noexcept override;
 
   //! Update inertia at the nodes
@@ -357,6 +369,23 @@ class Node : public NodeBase<Tdim> {
   //! Compute velocity and acceleration from the momentum and inertia
   //! \ingroup Implicit
   void compute_velocity_acceleration() override;
+
+  //! Return averaged particle stress at a given node
+   //! \param[in] phase Index corresponding to the phase
+  Eigen::Matrix<double, 6, 1> stress(unsigned phase) override {
+    return stress_.col(phase);
+  }
+
+  //! Set stress to 0 for new calculation each timestep
+  void reset_stress() override {
+    stress_.setZero();
+  }
+
+  // //! Add particle stress to nodal stress
+  // //! \param[in] particle_stress_contribution Weighted stress from the particles
+  // void add_particle_stress(const Eigen::Matrix<double, 6, 1>& particle_stress_contribution) override {
+  //   stress_ += particle_stress_contribution;
+  // }
 
   //! Return displacement at a given node for a given phase
   //! \ingroup Implicit
@@ -631,6 +660,10 @@ class Node : public NodeBase<Tdim> {
   Eigen::Matrix<double, Tdim, Tnphases> momentum_;
   //! Acceleration
   Eigen::Matrix<double, Tdim, Tnphases> acceleration_;
+
+  //! Nodal averaged particle stress
+  Eigen::Matrix<double, 6, Tnphases> stress_;
+
   //! Velocity constraints
   std::map<unsigned, double> velocity_constraints_;
   //! Acceleration constraints

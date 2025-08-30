@@ -250,6 +250,9 @@ bool mpm::MPMImplicit<Tdim>::solve() {
 #endif
 #endif
 
+    // Calculate smoothed stresses after step convergence
+    mpm_scheme_->stress_smoothing(phase_);
+
     // Write outputs
     this->write_outputs(this->step_ + 1);
   }

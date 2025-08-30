@@ -33,7 +33,8 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
       {"normals", VariableType::Vector},
       // Tensor variables
       {"strains", VariableType::Tensor},
-      {"stresses", VariableType::Tensor}};
+      {"stresses", VariableType::Tensor},
+      {"smoothed_stresses", VariableType::Tensor},};
 
   try {
     analysis_ = io_->analysis();

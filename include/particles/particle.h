@@ -215,7 +215,7 @@ class Particle : public ParticleBase<Tdim> {
   void update_deformation_gradient() noexcept override;
 
   //! Initial stress
-  //! \param[in] stress Initial sress
+  //! \param[in] stress Initial stress
   void initial_stress(const Eigen::Matrix<double, 6, 1>& stress) override {
     this->stress_ = stress;
     this->previous_stress_ = stress;
@@ -227,6 +227,18 @@ class Particle : public ParticleBase<Tdim> {
 
   //! Return stress of the particle
   Eigen::Matrix<double, 6, 1> stress() const override { return stress_; }
+
+
+  //! Initial smoothed stress
+  //! \param[in] smoothed_stress Initial smoothed stress
+  void initial_smoothed_stress(const Eigen::Matrix<double, 6, 1>& smoothed_stress) {
+    this->smoothed_stress_ = smoothed_stress;
+  }
+
+  //! Return smoothed stress of the particle
+  Eigen::Matrix<double, 6, 1> smoothed_stress() const { return smoothed_stress_; }
+
+
 
   //! Map body force
   //! \param[in] pgravity Gravity of a particle
@@ -300,6 +312,10 @@ class Particle : public ParticleBase<Tdim> {
 
   //! Map particle pressure to nodes
   bool map_pressure_to_nodes(
+      unsigned phase = mpm::ParticlePhase::Solid) noexcept override;
+
+    //! Map particle stress to nodes
+  bool map_stress_to_nodes(
       unsigned phase = mpm::ParticlePhase::Solid) noexcept override;
 
   //! Compute pressure smoothing of the particle based on nodal pressure
@@ -449,6 +465,13 @@ class Particle : public ParticleBase<Tdim> {
   Eigen::Matrix<double, 6, 1> previous_stress() const override {
     return previous_stress_;
   }
+
+  // //! Add stress contributions to adjacent nodes
+  // void add_stress_contributions_to_nodes() override;
+
+  //! Compute smoothed stress from nodal stresses
+  bool compute_stress_smoothing(unsigned phase) noexcept override;
+
 
   //! Compute updated position of the particle by Newmark scheme
   //! \ingroup Implicit
@@ -627,6 +650,7 @@ class Particle : public ParticleBase<Tdim> {
   Eigen::Matrix<double, Tdim, 1> natural_size_;
   //! Stresses
   Eigen::Matrix<double, 6, 1> stress_;
+  Eigen::Matrix<double, 6, 1> smoothed_stress_;
   //! Strains
   Eigen::Matrix<double, 6, 1> strain_;
   //! dvolumetric strain

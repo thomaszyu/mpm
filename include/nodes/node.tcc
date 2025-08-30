@@ -33,12 +33,14 @@ void mpm::Node<Tdim, Tdof, Tnphases>::initialise() noexcept {
   velocity_.setZero();
   momentum_.setZero();
   acceleration_.setZero();
+  stress_.setZero();
   free_surface_ = false;
   pressure_increment_ = 0.;
   correction_force_.setZero();
   status_ = false;
   solving_status_ = false;
   material_ids_.clear();
+
 }
 
 //! Initialise shared pointer to nodal properties pool
@@ -177,6 +179,23 @@ void mpm::Node<Tdim, Tdof, Tnphases>::update_mass_pressure(
   }
 }
 
+//! Update stress at the nodes from particle
+template <unsigned Tdim, unsigned Tdof, unsigned Tnphases>
+void mpm::Node<Tdim, Tdof, Tnphases>::update_mass_stress(
+    unsigned phase, const Eigen::Matrix<double, 6, 1>& mass_stress) noexcept {
+  // Assert
+  assert(phase < Tnphases);
+
+  const double tolerance = 1.E-16;
+  // Compute stress from mass*stress
+  if (mass_(phase) > tolerance) {
+    node_mutex_.lock();
+    stress_.col(phase).noalias() += mass_stress / mass_(phase);
+    node_mutex_.unlock();
+  }
+}
+
+
 //! Assign pressure constraint
 template <unsigned Tdim, unsigned Tdof, unsigned Tnphases>
 bool mpm::Node<Tdim, Tdof, Tnphases>::assign_pressure_constraint(
@@ -223,12 +242,24 @@ void mpm::Node<Tdim, Tdof, Tnphases>::apply_pressure_constraint(
 //! Assign pressure at the nodes from particle
 template <unsigned Tdim, unsigned Tdof, unsigned Tnphases>
 void mpm::Node<Tdim, Tdof, Tnphases>::assign_pressure(unsigned phase,
-                                                      double pressure) {
+                                                      double mass_pressure) {
   // Compute pressure from mass*pressure
   node_mutex_.lock();
-  pressure_(phase) = pressure;
+  pressure_(phase) = mass_pressure;
   node_mutex_.unlock();
 }
+
+
+//! Assign stress at the nodes from particle
+template <unsigned Tdim, unsigned Tdof, unsigned Tnphases>
+void mpm::Node<Tdim, Tdof, Tnphases>::assign_stress(unsigned phase,
+          const Eigen::Matrix<double, 6, 1>& mass_stress) {
+  // Compute stress from mass*pressure
+  node_mutex_.lock();
+  stress_.col(phase).noalias() = mass_stress;
+  node_mutex_.unlock();
+}
+
 
 //! Compute velocity from momentum
 //! velocity = momentum / mass
@@ -343,6 +374,7 @@ bool mpm::Node<Tdim, Tdof, Tnphases>::compute_acceleration_velocity_cundall(
   }
   return status;
 }
+
 
 //! Assign velocity constraint
 //! Constrain directions can take values between 0 and Dim * Nphases

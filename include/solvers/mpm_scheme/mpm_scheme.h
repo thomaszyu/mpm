@@ -50,6 +50,11 @@ class MPMScheme {
   //! \param[in] pressure_smoothing Enable or disable pressure smoothing
   virtual inline void pressure_smoothing(unsigned phase);
 
+  //! Stress smoothing
+  //! \param[in] phase Phase to smooth stress
+  //! \param[in] stress_smoothing Enable or disable stress smoothing
+  virtual inline void stress_smoothing(unsigned phase);
+
   //! Compute forces
   //! \param[in] gravity Acceleration due to gravity
   //! \param[in] step Number of step in solver
