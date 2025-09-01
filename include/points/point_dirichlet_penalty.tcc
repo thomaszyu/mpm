@@ -83,21 +83,21 @@ void mpm::PointDirichletPenalty<Tdim>::compute_updated_position(
   // copy-paste to chatgpt and ask it to remove duplicates for node id
   // TODO FIX THIS FOR 3D IF WE DO IT LATER (this only works for 2d)
   
-  #pragma omp critical 
-  {
-    std::cout << "0 " << id_ << " " << std::setprecision(15) << coordinates_[0] << " " << coordinates_[1] << " 0 0" << std::endl; // output position??
+  // #pragma omp critical 
+  // {
+  //   std::cout << "0 " << id_ << " " << std::setprecision(15) << coordinates_[0] << " " << coordinates_[1] << " 0 0" << std::endl; // output position??
 
-    // 0 represents point
+  //   // 0 represents point
 
-    for (unsigned i = 0; i < nodes_.size(); i++) {
+  //   for (unsigned i = 0; i < nodes_.size(); i++) {
 
-      // std::cout<<no
-      const auto& node_coords = nodes_[i]->coordinates() ;
-      const auto& node_internal_force = nodes_[i]->internal_force(phase);
-      double x_force = node_internal_force[0];
-      double y_force = node_internal_force[1];
+  //     // std::cout<<no
+  //     const auto& node_coords = nodes_[i]->coordinates() ;
+  //     const auto& node_internal_force = nodes_[i]->internal_force(phase);
+  //     double x_force = node_internal_force[0];
+  //     double y_force = node_internal_force[1];
 
-        std::cout << "1 " << nodes_[i]->id() << " " << std::setprecision(15) << node_coords[0] << " " << node_coords[1] << " " << x_force << " " << y_force << std::endl; // outputs force to terminal, matlab-friendly version
+  //       std::cout << "1 " << nodes_[i]->id() << " " << std::setprecision(15) << node_coords[0] << " " << node_coords[1] << " " << x_force << " " << y_force << std::endl; // outputs force to terminal, matlab-friendly version
 
         // 1 represents node
 
@@ -112,15 +112,16 @@ void mpm::PointDirichletPenalty<Tdim>::compute_updated_position(
       // this will give a lot of outputs, just check the steady state
 
       // alternatively can just post process this in matlab
-    }
-  }
+    //}
+  //}
 }
 
 
 //! Add plate boundary nodes into mesh set (specifically for RFT)
-void mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set(std::set<std::shared_ptr<NodeBase<Tdim>>> &plate_boundary_node_set) {
+template <unsigned Tdim>
+void mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set(std::set<mpm::Index> &plate_boundary_node_set) {
   for (unsigned i = 0; i < nodes_.size(); i++) {
-    plate_boundary_node_set.insert(nodes_[i]);
+    plate_boundary_node_set.insert(nodes_[i]->id());
   }
 }
 

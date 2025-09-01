@@ -65,6 +65,12 @@ class MPMImplicit : public MPMBase<Tdim> {
   //! Finalisation of Newton-Raphson iteration
   //! \ingroup Implicit
   void finalise_newton_raphson_iteration();
+
+  //! FOR RFT ONLY
+  //! Write plate force to file for RFT
+  //! \ingroup Implicit
+  void write_force(double time, double normal_force);
+
   /**@}*/
 
   //! Class private variables

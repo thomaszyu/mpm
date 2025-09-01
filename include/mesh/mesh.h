@@ -43,6 +43,7 @@ using Json = nlohmann::json;
 #include "particle_base.h"
 #include "pod_particle.h"
 #include "point_base.h"
+#include "point_dirichlet_penalty.h"
 #include "radial_basis_function.h"
 #include "traction.h"
 #include "vector.h"

@@ -6,6 +6,7 @@
 #endif
 
 #include "mpm_scheme.h"
+#include "force_writer.h"
 
 namespace mpm {
 
@@ -71,6 +72,7 @@ class MPMSchemeNewmark : public MPMScheme<Tdim> {
   //! \param[in] locate_particles Flag to enable locate particles, if set to
   //! false, unlocated particles will be removed
   inline void locate_particles(bool locate_particles) override;
+
 
   /**
    * \defgroup Implicit Functions dealing with implicit MPM

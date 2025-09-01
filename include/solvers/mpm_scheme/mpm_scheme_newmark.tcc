@@ -198,12 +198,6 @@ inline void mpm::MPMSchemeNewmark<Tdim>::compute_particle_kinematics(
   mesh_->iterate_over_points(
       std::bind(&mpm::PointBase<Tdim>::compute_updated_position,
                 std::placeholders::_1, dt_, phase, velocity_update));
-
-  VectorDim normal_plate_force = mesh_->compute_plate_force(phase);
-
-  
-
-  // TODO write to IO
 }
 
 // Update particle stress, strain and volume

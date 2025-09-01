@@ -3187,8 +3187,7 @@ double mpm::Mesh<Tdim>::compute_plate_force(unsigned phase) {
   const auto& end_coords = end_point->coordinates();
 
   VectorDim disp = end_coords - start_coords; // vector in plate plane
-  double norm_squared = disp[0]*disp[0] + disp[1]*disp[1];
-  double length = std::sqrt(norm_squared);
+  double length = disp.norm();
   disp = disp / length; // rescale to get normalized vector
 
   // make normal vector by rotating disp 90 deg
@@ -3196,22 +3195,34 @@ double mpm::Mesh<Tdim>::compute_plate_force(unsigned phase) {
   normal_vector[0] = -disp[1];
   normal_vector[1] = disp[0];
 
-  // make set of nodes adjacent to plate, empty set
-  std::set<std::shared_ptr<NodeBase<Tdim>>> plate_boundary_nodes_set; 
+  // make set of node ids adjacent to plate, empty set
+  std::set<mpm::Index> plate_boundary_nodes_set; 
 
   // populate set with nodes
   // pseudocode: iterate over points, get node ids, add to set (no duplicates)
-  iterate_over_points(
-    std::bind(&mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set,
-    std::placeholders::_1, plate_boundary_nodes_set));
+  // iterate_over_points(
+  //   std::bind(&mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set, 
+  //     std::placeholders::_1, std::ref(plate_boundary_nodes_set)));
 
+  iterate_over_points([&plate_boundary_nodes_set](const auto& point_ptr_base) {
+    auto point_ptr = std::dynamic_pointer_cast<mpm::PointDirichletPenalty<3>>(point_ptr_base);
+    if (point_ptr) {
+        point_ptr->add_boundary_nodes_to_set(plate_boundary_nodes_set);
+    }
+  });
+  
   // set normal force = 0
   double normal_force = 0;
 
+  // convert set into vector so that we can iterate
+  std::vector<mpm::Index> plate_boundary_nodes_vec(
+    plate_boundary_nodes_set.begin(), plate_boundary_nodes_set.end());
+
   // iterate over nodes in set N
   #pragma omp parallel for reduction(+:normal_force)
-  for (const auto& node_ptr : plate_boundary_nodes_set) {
-    // node_ptr is a std::shared_ptr<NodeBase<Tdim>>
+  for (size_t i = 0; i < plate_boundary_nodes_vec.size(); i++) {
+    const auto& node_id = plate_boundary_nodes_vec[i];
+    const auto& node_ptr = map_nodes_[node_id];
 
     // prefactor = 1
     // if size of node->mpi_ranks() > 1
@@ -3222,20 +3233,29 @@ double mpm::Mesh<Tdim>::compute_plate_force(unsigned phase) {
     if (num_ranks == 1) {
       prefactor = 1;
     } else if (num_ranks > 1) {
-      prefactor = (num_ranks - 1) / num_ranks;
+      prefactor = static_cast<double>(num_ranks - 1) / static_cast<double>(num_ranks);
+      // the static cast avoids integer division
     }
 
     VectorDim node_force = node_ptr->internal_force(phase);
 
     // take dot product with normal vector to compute normal force contribution
-    double force_contribution = (node_ptr.cwiseProduct(normal_vector))
+    double force_contribution = (node_force.array() * normal_vector.array()).sum();
 
     // add this to normal force (we have reduction so it's fine)
     normal_force = normal_force + prefactor*(force_contribution);
   }
 
   normal_force = std::abs(normal_force); // sign correction
-  
+  double global_normal_force = 0.0; // value to be returned
+
+  // for MPI, sum force across all MPI ranks if there are many ranks
+  #ifdef USE_MPI
+    MPI_Allreduce(&normal_force, &global_normal_force, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  #else
+    global_normal_force = normal_force;
+  #endif
+
   // return normal force
-  return normal_force
+  return global_normal_force;
 }
