@@ -3323,8 +3323,11 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_normal() {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  std::cout << "Rank " << rank << " of " << size
+  if (points_.size() > 0) {
+    std::cout << "Rank " << rank << " of " << size
             << " has " << points_.size() << " points" << std::endl;
+  }
+  
 
   // make sure there are at least 2 points in submesh
   if (points_.size() >= 2) {
