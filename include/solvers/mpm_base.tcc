@@ -21,9 +21,11 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
   // Empty all materials
   materials_.clear();
 
-  // Variable list
-  tsl::robin_map<std::string, VariableType> variables = {
+  // Particle variable list
+  tsl::robin_map<std::string, VariableType> particle_variables = {
       // Scalar variables
+      {"id", VariableType::Scalar},
+      {"material", VariableType::Scalar},
       {"mass", VariableType::Scalar},
       {"volume", VariableType::Scalar},
       {"mass_density", VariableType::Scalar},
@@ -35,6 +37,15 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
       {"strains", VariableType::Tensor},
       {"stresses", VariableType::Tensor},
       {"smoothed_stresses", VariableType::Tensor},};
+
+  // Node variable list
+  tsl::robin_map<std::string, VariableType> node_variables = {
+      // Scalar variables
+      {"mass", VariableType::Scalar},
+      // Vector variables
+      {"displacements", VariableType::Vector},
+      {"velocities", VariableType::Vector},
+      {"accelerations", VariableType::Vector}};
 
   try {
     analysis_ = io_->analysis();
@@ -56,22 +67,27 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
     try {
       if (analysis_.find("mpm_scheme") != analysis_.end())
         stress_update_ = analysis_["mpm_scheme"].template get<std::string>();
+      else
+        throw std::runtime_error("\"mpm_scheme\" is undefined");
     } catch (std::exception& exception) {
       console_->warn(
-          "{} #{}: {}. Stress update method is not specified, using USF as "
-          "default",
+          "{} #{}: Stress update method is not specified, using \"usf\" as "
+          "default; {}",
           __FILE__, __LINE__, exception.what());
     }
 
     // Velocity update
     std::string vel_update_type;
     try {
-      if (analysis_["velocity_update"].is_boolean()) {
-        bool v_update = analysis_["velocity_update"].template get<bool>();
-        vel_update_type = (v_update) ? "pic" : "flip";
+      if (analysis_.find("velocity_update") != analysis_.end()) {
+        if (analysis_["velocity_update"].is_boolean()) {
+          bool v_update = analysis_["velocity_update"].template get<bool>();
+          vel_update_type = (v_update) ? "pic" : "flip";
+        } else
+          vel_update_type =
+              analysis_["velocity_update"].template get<std::string>();
       } else
-        vel_update_type =
-            analysis_["velocity_update"].template get<std::string>();
+        throw std::runtime_error("\"velocity_update\" is undefined");
 
       // Check if blending_ratio is specified
       if (analysis_.contains("velocity_update_settings") &&
@@ -84,15 +100,15 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
           blending_ratio_ = 1.0;
           console_->warn(
               "{} #{}: FLIP-PIC Blending ratio is not properly assigned, using "
-              "default value as 1.0.",
+              "1.0 as default",
               __FILE__, __LINE__);
         }
       }
 
     } catch (std::exception& exception) {
       console_->warn(
-          "{} #{}: {} Velocity update method is not properly specified, using "
-          "default as \'flip\'",
+          "{} #{}: Velocity update method is not properly specified, using "
+          "\"flip\" as default; {}",
           __FILE__, __LINE__, exception.what());
       vel_update_type = "flip";
     }
@@ -102,11 +118,13 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
     try {
       if (analysis_.find("damping") != analysis_.end()) {
         if (!initialise_damping(analysis_.at("damping")))
-          throw std::runtime_error("Damping parameters are not defined");
-      }
+          throw std::runtime_error("Damping parameters are undefined");
+      } else
+        throw std::runtime_error("\"damping\" is undefined");
     } catch (std::exception& exception) {
-      console_->warn("{} #{}: Damping is not specified, using none as default",
-                     __FILE__, __LINE__, exception.what());
+      console_->warn(
+          "{} #{}: Damping is not specified, using \"None\" as default; {}",
+          __FILE__, __LINE__, exception.what());
     }
 
     // Math functions
@@ -115,9 +133,13 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
       auto math_functions = io_->json_object("math_functions");
       if (!math_functions.empty())
         this->initialise_math_functions(math_functions);
+      else
+        throw std::runtime_error("");
     } catch (std::exception& exception) {
-      console_->warn("{} #{}: No math functions are defined", __FILE__,
-                     __LINE__, exception.what());
+      console_->warn(
+          "{} #{}: Math functions are undefined; Math functions JSON data not "
+          "found",
+          __FILE__, __LINE__);
     }
 
     post_process_ = io_->post_processing();
@@ -125,7 +147,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
     output_steps_ = post_process_["output_steps"].template get<mpm::Index>();
 
   } catch (std::domain_error& domain_error) {
-    console_->error("{} {} Get analysis object: {}", __FILE__, __LINE__,
+    console_->error("{} #{}: Get analysis object \"{}\"", __FILE__, __LINE__,
                     domain_error.what());
     abort();
   }
@@ -146,11 +168,13 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
     for (unsigned i = 0; i < post_process_.at("vtk").size(); ++i) {
       std::string attribute =
           post_process_["vtk"][i].template get<std::string>();
-      if (variables.find(attribute) != variables.end())
-        vtk_vars_[variables.at(attribute)].emplace_back(attribute);
+      if (attribute == "geometry")
+        geometry_vtk_ = true;
+      else if (particle_variables.find(attribute) != particle_variables.end())
+        vtk_vars_[particle_variables.at(attribute)].emplace_back(attribute);
       else {
         console_->warn(
-            "{} #{}: VTK variable '{}' was specified, but is not available "
+            "{} #{}: VTK variable \"{}\" was specified, but is not available "
             "in variable list",
             __FILE__, __LINE__, attribute);
       }
@@ -161,7 +185,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
         __FILE__, __LINE__);
   }
 
-  // VTK state variables
+  // VTK particle state variables
   bool vtk_statevar = false;
   if ((post_process_.find("vtk_statevars") != post_process_.end()) &&
       post_process_.at("vtk_statevars").is_array() &&
@@ -190,6 +214,56 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
     console_->warn(
         "{} #{}: No VTK statevariable were specified, none will be generated",
         __FILE__, __LINE__);
+
+  // VTK node variables
+  // Initialise container with empty map
+  tsl::robin_map<unsigned, std::vector<std::string>> empty_map;
+  vtk_nodevars_.insert(std::make_pair(mpm::VariableType::Scalar, empty_map));
+  vtk_nodevars_.insert(std::make_pair(mpm::VariableType::Vector, empty_map));
+
+  if ((post_process_.find("vtk_nodevars") != post_process_.end()) &&
+      post_process_.at("vtk_nodevars").is_array() &&
+      post_process_.at("vtk_nodevars").size() > 0) {
+    // Iterate over node_vars
+    for (const auto& nvars : post_process_["vtk_nodevars"]) {
+      // Phase id
+      unsigned phase_id = 0;
+      if (nvars.contains("phase_id"))
+        phase_id = nvars.at("phase_id").template get<unsigned>();
+
+      // Node variables
+      if (nvars.at("nodevars").is_array() && nvars.at("nodevars").size() > 0) {
+        // Loop over nodevars and check type
+        for (unsigned i = 0; i < nvars.at("nodevars").size(); ++i) {
+          std::string attribute =
+              nvars["nodevars"][i].template get<std::string>();
+          if (node_variables.find(attribute) != node_variables.end()) {
+            // Inner map
+            auto& inner_map = vtk_nodevars_[node_variables.at(attribute)];
+
+            // Check if inner_map has phase_id
+            // If yes, emplace_back
+            if (inner_map.find(phase_id) != inner_map.end()) {
+              inner_map[phase_id].emplace_back(attribute);
+            }
+            // If not insert
+            else {
+              std::vector<std::string> v{attribute};
+              inner_map.insert(std::make_pair(phase_id, v));
+            }
+          } else {
+            console_->warn(
+                "{} #{}: VTK nodevars '{}' was specified, but is not available "
+                " in variable list ",
+                __FILE__, __LINE__, attribute);
+          }
+        }
+      }
+    }
+  } else
+    console_->warn(
+        "{} #{}: No VTK nodevariable were specified, none will be generated",
+        __FILE__, __LINE__);
 }
 
 // Initialise mesh
@@ -215,7 +289,7 @@ void mpm::MPMBase<Tdim>::initialise_mesh() {
     check_duplicates = mesh_props["check_duplicates"].template get<bool>();
   } catch (std::exception& exception) {
     console_->warn(
-        "{} #{}: Check duplicates, not specified setting default as true",
+        "{} #{}: Check duplicates not specified, using \"true\" as default; {}",
         __FILE__, __LINE__, exception.what());
     check_duplicates = true;
   }
@@ -242,7 +316,7 @@ void mpm::MPMBase<Tdim>::initialise_mesh() {
 
   if (!node_status)
     throw std::runtime_error(
-        "mpm::base::init_mesh(): Addition of nodes to mesh failed");
+        "mpm::base::initialise_mesh(): Addition of nodes to mesh failed");
 
   auto nodes_end = std::chrono::steady_clock::now();
   console_->info("Rank {} Read nodes: {} ms", mpi_rank,
@@ -294,7 +368,7 @@ void mpm::MPMBase<Tdim>::initialise_mesh() {
 
   if (!cell_status)
     throw std::runtime_error(
-        "mpm::base::init_mesh(): Addition of cells to mesh failed");
+        "mpm::base::initialise_mesh(): Addition of cells to mesh failed");
 
   // Compute cell neighbours
   mesh_->find_cell_neighbours();
@@ -379,7 +453,7 @@ void mpm::MPMBase<Tdim>::initialise_particles() {
         mesh_->generate_particles(io_, json_particle["generator"]);
     if (!gen_status)
       std::runtime_error(
-          "mpm::base::init_particles() Generate particles failed");
+          "mpm::base::initialise_particles() Generate particles failed");
   }
 
   // Gather particle types
@@ -404,7 +478,7 @@ void mpm::MPMBase<Tdim>::initialise_particles() {
 
   if (!unlocatable_particles.empty())
     throw std::runtime_error(
-        "mpm::base::init_particles() Particle outside the mesh domain");
+        "mpm::base::initialise_particles() Particle outside the mesh domain");
 
   // Write particles and cells to file
   particle_io->write_particles_cells(
@@ -460,10 +534,13 @@ void mpm::MPMBase<Tdim>::initialise_particles() {
                                std::placeholders::_1,
                                materials_.at(material_id), phase_id));
       }
-    }
+    } else
+      throw std::runtime_error("");
   } catch (std::exception& exception) {
-    console_->warn("#{}: Material sets are not specified", __LINE__,
-                   exception.what());
+    console_->warn(
+        "{} #{}: Material sets are undefined; Material sets JSON data not "
+        "found",
+        __FILE__, __LINE__);
   }
 }
 
@@ -492,7 +569,7 @@ void mpm::MPMBase<Tdim>::initialise_materials() {
     // If insert material failed
     if (!result.second)
       throw std::runtime_error(
-          "mpm::base::init_materials(): New material cannot be added, "
+          "mpm::base::initialise_materials(): New material cannot be added, "
           "insertion failed");
   }
   // Copy materials to mesh
@@ -600,7 +677,7 @@ bool mpm::MPMBase<Tdim>::checkpoint_resume() {
     this->initialise_point_types();
 
     if (!analysis_["resume"]["resume"].template get<bool>())
-      throw std::runtime_error("Resume analysis option is disabled!");
+      throw std::runtime_error("Resume analysis option is disabled");
 
     // Get unique analysis id
     this->uuid_ = analysis_["resume"]["uuid"].template get<std::string>();
@@ -657,7 +734,7 @@ bool mpm::MPMBase<Tdim>::checkpoint_resume() {
                    this->nsteps_);
 
   } catch (std::exception& exception) {
-    console_->info("{} {} Resume failed, restarting analysis: {}", __FILE__,
+    console_->info("{} #{}: Resume failed, restarting analysis; {}", __FILE__,
                    __LINE__, exception.what());
     this->step_ = 0;
     checkpoint = false;
@@ -725,21 +802,25 @@ void mpm::MPMBase<Tdim>::write_vtk_particles(mpm::Index step,
                                              mpm::Index max_steps) {
 
   // VTK PolyData writer
-  auto vtk_writer = std::make_unique<VtkWriter>(mesh_->particle_coordinates());
+  auto vtk_writer = std::make_unique<VtkWriter>(mesh_->particle_coordinates(),
+                                                mesh_->nodal_coordinates(),
+                                                mesh_->cell_connectivity(true));
+  const std::string extension = ".vtp";
 
   // Write mesh on step 0
   // Get active node pairs use true
   if (step % nload_balance_steps_ == 0)
     vtk_writer->write_mesh(
-        io_->output_file("mesh", ".vtp", uuid_, step, max_steps).string(),
-        mesh_->nodal_coordinates(), mesh_->node_pairs(true));
+        io_->output_file("mesh", extension, uuid_, step, max_steps).string(),
+        mesh_->node_pairs(true));
 
-  // Write input geometry to vtk file
-  const std::string extension = ".vtp";
-  const std::string attribute = "geometry";
-  auto meshfile =
-      io_->output_file(attribute, extension, uuid_, step, max_steps).string();
-  vtk_writer->write_geometry(meshfile);
+  // VTK geometry
+  if (geometry_vtk_) {
+    auto meshfile =
+        io_->output_file("geometry", extension, uuid_, step, max_steps)
+            .string();
+    vtk_writer->write_geometry(meshfile);
+  }
 
   // MPI parallel vtk file
   int mpi_rank = 0;
@@ -838,6 +919,64 @@ void mpm::MPMBase<Tdim>::write_vtk_particles(mpm::Index step,
         unsigned ncomponents = 1;
         vtk_writer->write_parallel_vtk(parallel_file, phase_attribute, mpi_size,
                                        step, max_steps, ncomponents);
+      }
+#endif
+    }
+  }
+
+  //! VTK nodal scalar variables
+  for (const auto& vtk_scalar_nodevar :
+       vtk_nodevars_.at(mpm::VariableType::Scalar)) {
+    unsigned phase_id = vtk_scalar_nodevar.first;
+    for (const auto& attribute : vtk_scalar_nodevar.second) {
+      std::string node_phase_attribute =
+          "node_phase" + std::to_string(phase_id) + attribute;
+      // Write state variables
+      auto file = io_->output_file(node_phase_attribute, extension, uuid_, step,
+                                   max_steps)
+                      .string();
+      vtk_writer->write_scalar_node_data(
+          file, mesh_->nodes_scalar_data(attribute, phase_id),
+          node_phase_attribute);
+      // Write a parallel MPI VTK container file
+#ifdef USE_MPI
+      if (mpi_rank == 0 && mpi_size > 1) {
+        auto parallel_file =
+            io_->output_file(node_phase_attribute, ".pvtp", uuid_, step,
+                             max_steps, write_mpi_rank)
+                .string();
+        unsigned ncomponents = 1;
+        vtk_writer->write_parallel_vtk(parallel_file, node_phase_attribute,
+                                       mpi_size, step, max_steps, ncomponents);
+      }
+#endif
+    }
+  }
+
+  //! VTK nodal vector variables
+  for (const auto& vtk_vector_nodevar :
+       vtk_nodevars_.at(mpm::VariableType::Vector)) {
+    unsigned phase_id = vtk_vector_nodevar.first;
+    for (const auto& attribute : vtk_vector_nodevar.second) {
+      std::string node_phase_attribute =
+          "node_phase" + std::to_string(phase_id) + attribute;
+      // Write state variables
+      auto file = io_->output_file(node_phase_attribute, extension, uuid_, step,
+                                   max_steps)
+                      .string();
+      vtk_writer->write_vector_node_data(
+          file, mesh_->nodes_vector_data(attribute, phase_id),
+          node_phase_attribute);
+      // Write a parallel MPI VTK container file
+#ifdef USE_MPI
+      if (mpi_rank == 0 && mpi_size > 1) {
+        auto parallel_file =
+            io_->output_file(node_phase_attribute, ".pvtp", uuid_, step,
+                             max_steps, write_mpi_rank)
+                .string();
+        unsigned ncomponents = 3;
+        vtk_writer->write_parallel_vtk(parallel_file, node_phase_attribute,
+                                       mpi_size, step, max_steps, ncomponents);
       }
 #endif
     }
@@ -996,8 +1135,8 @@ bool mpm::MPMBase<Tdim>::is_isoparametric() {
     isoparametric = mesh_props.at("isoparametric").template get<bool>();
   } catch (std::exception& exception) {
     console_->warn(
-        "{} {} Isoparametric status of mesh: {}\n Setting mesh as "
-        "isoparametric.",
+        "{} #{}: Isoparametric status of mesh, using \"isoparametric\" "
+        "as default; {}",
         __FILE__, __LINE__, exception.what());
     isoparametric = true;
   }
@@ -1029,6 +1168,10 @@ void mpm::MPMBase<Tdim>::initialise_loads() {
     mesh_->iterate_over_particles(
         std::bind(&mpm::ParticleBase<Tdim>::assign_acceleration,
                   std::placeholders::_1, gravity_));
+  } else {
+    throw std::runtime_error(
+        "mpm::base::initialise_loads(): Specified gravity dimension is "
+        "invalid");
   }
 
   // Create a file reader
@@ -1057,10 +1200,14 @@ void mpm::MPMBase<Tdim>::initialise_loads() {
           mesh_->create_particles_tractions(tfunction, pset_id, dir, traction);
       if (!particles_tractions)
         throw std::runtime_error(
-            "Particles tractions are not properly assigned");
+            "mpm::base::initialise_loads(): Particles tractions are not "
+            "properly assigned");
     }
   } else
-    console_->warn("No particle surface traction is defined for the analysis");
+    console_->warn(
+        "#{}: Particle surface tractions are undefined; Particle surface "
+        "tractions JSON data not found",
+        __LINE__);
 
   // Read and assign nodal concentrated forces
   if (loads.find("concentrated_nodal_forces") != loads.end()) {
@@ -1072,8 +1219,8 @@ void mpm::MPMBase<Tdim>::initialise_loads() {
             reader->read_forces(io_->file_name(force_file)));
         if (!nodal_forces)
           throw std::runtime_error(
-              "Nodal force file is invalid, forces are not properly "
-              "assigned");
+              "mpm::base::initialise_loads(): Nodal force file is invalid, "
+              "forces are not properly assigned");
         set_node_concentrated_force_ = true;
       } else {
         // Get the math function
@@ -1093,12 +1240,16 @@ void mpm::MPMBase<Tdim>::initialise_loads() {
             ffunction, nset_id, dir, force);
         if (!nodal_force)
           throw std::runtime_error(
-              "Concentrated nodal forces are not properly assigned");
+              "mpm::base::initialise_loads(): Concentrated nodal forces are "
+              "not properly assigned");
         set_node_concentrated_force_ = true;
       }
     }
   } else
-    console_->warn("No concentrated nodal force is defined for the analysis");
+    console_->warn(
+        "#{}: Concentrated nodal forces are undefined; Concentrated nodal "
+        "forces JSON data not found",
+        __LINE__);
 }
 
 //! Initialise math functions
@@ -1153,8 +1304,8 @@ bool mpm::MPMBase<Tdim>::initialise_math_functions(const Json& math_functions) {
       }
     }
   } catch (std::exception& exception) {
-    console_->error("#{}: Reading math functions: {}", __LINE__,
-                    exception.what());
+    console_->error("{} #{}: Math functions are not properly specified; {}",
+                    __FILE__, __LINE__, exception.what());
     status = false;
   }
   return status;
@@ -1173,12 +1324,13 @@ void mpm::MPMBase<Tdim>::node_entity_sets(const Json& mesh_props,
             (io_->entity_sets(io_->file_name(entity_sets), "node_sets")),
             check_duplicates);
         if (!node_sets)
-          throw std::runtime_error("Node sets are not properly assigned");
+          throw std::runtime_error(
+              "Node entity sets are not properly assigned");
       }
     } else
-      throw std::runtime_error("Entity set JSON not found");
+      throw std::runtime_error("Node entity set JSON data not found");
   } catch (std::exception& exception) {
-    console_->warn("#{}: Entity sets are undefined {} ", __LINE__,
+    console_->warn("#{}: Node entity sets are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1202,9 +1354,9 @@ void mpm::MPMBase<Tdim>::node_euler_angles(
               "Euler angles are not properly assigned/computed");
       }
     } else
-      throw std::runtime_error("Euler angles JSON not found");
+      throw std::runtime_error("Euler angles JSON data not found");
   } catch (std::exception& exception) {
-    console_->warn("#{}: Euler angles are undefined {} ", __LINE__,
+    console_->warn("#{}: Euler angles are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1257,13 +1409,13 @@ void mpm::MPMBase<Tdim>::nodal_acceleration_constraints(
                   nset_id, acceleration_constraint);
           if (!acceleration_constraints)
             throw std::runtime_error(
-                "Nodal acceleration constraint is not properly assigned");
+                "Nodal acceleration constraints are not properly assigned");
         }
       }
     } else
-      throw std::runtime_error("Acceleration constraints JSON not found");
+      throw std::runtime_error("Acceleration constraints JSON data not found");
   } catch (std::exception& exception) {
-    console_->warn("#{}: Acceleration constraints are undefined {} ", __LINE__,
+    console_->warn("#{}: Acceleration constraints are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1307,13 +1459,13 @@ void mpm::MPMBase<Tdim>::nodal_velocity_constraints(
                   nset_id, velocity_constraint);
           if (!velocity_constraints)
             throw std::runtime_error(
-                "Nodal velocity constraint is not properly assigned");
+                "Nodal velocity constraints are not properly assigned");
         }
       }
     } else
-      throw std::runtime_error("Velocity constraints JSON not found");
+      throw std::runtime_error("Velocity constraints JSON data not found");
   } catch (std::exception& exception) {
-    console_->warn("#{}: Velocity constraints are undefined {} ", __LINE__,
+    console_->warn("#{}: Velocity constraints are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1364,13 +1516,13 @@ void mpm::MPMBase<Tdim>::nodal_displacement_constraints(
                   dfunction, nset_id, displacement_constraint);
           if (!displacement_constraints)
             throw std::runtime_error(
-                "Nodal displacement constraint is not properly assigned");
+                "Nodal displacement constraints are not properly assigned");
         }
       }
     } else
-      throw std::runtime_error("Displacement constraints JSON not found");
+      throw std::runtime_error("Displacement constraints JSON data not found");
   } catch (std::exception& exception) {
-    console_->warn("#{}: Displacement constraints are undefined {} ", __LINE__,
+    console_->warn("#{}: Displacement constraints are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1417,14 +1569,14 @@ void mpm::MPMBase<Tdim>::nodal_frictional_constraints(
                   nset_id, friction_constraint);
           if (!friction_constraints)
             throw std::runtime_error(
-                "Nodal friction constraint is not properly assigned");
+                "Nodal friction constraints are not properly assigned");
         }
       }
     } else
-      throw std::runtime_error("Friction constraints JSON not found");
+      throw std::runtime_error("Friction constraints JSON data not found");
 
   } catch (std::exception& exception) {
-    console_->warn("#{}: Friction conditions are undefined {} ", __LINE__,
+    console_->warn("#{}: Friction conditions are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1475,14 +1627,14 @@ void mpm::MPMBase<Tdim>::nodal_adhesional_constraints(
                   nset_id, adhesion_constraint);
           if (!adhesion_constraints)
             throw std::runtime_error(
-                "Nodal adhesion constraint is not properly assigned");
+                "Nodal adhesion constraints are not properly assigned");
         }
       }
     } else
-      throw std::runtime_error("Adhesion constraints JSON not found");
+      throw std::runtime_error("Adhesion constraints JSON data not found");
 
   } catch (std::exception& exception) {
-    console_->warn("#{}: Adhesion conditions are undefined {} ", __LINE__,
+    console_->warn("#{}: Adhesion conditions are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1531,10 +1683,10 @@ void mpm::MPMBase<Tdim>::nodal_pressure_constraints(
         }
       }
     } else
-      throw std::runtime_error("Pressure constraints JSON not found");
+      throw std::runtime_error("Pressure constraints JSON data not found");
 
   } catch (std::exception& exception) {
-    console_->warn("#{}: Nodal pressure constraints are undefined {} ",
+    console_->warn("#{}: Nodal pressure constraints are undefined; {}",
                    __LINE__, exception.what());
   }
 }
@@ -1581,17 +1733,17 @@ void mpm::MPMBase<Tdim>::nodal_absorbing_constraints(
                 nset_id, absorbing_constraint);
         if (!absorbing_constraints)
           throw std::runtime_error(
-              "Nodal absorbing constraint is not properly assigned");
+              "Nodal absorbing constraints are not properly assigned");
         // Assign node set IDs and list of constraints
         constraints_->assign_absorbing_id_ptr(nset_id, absorbing_constraint);
         // Set bool for solve loop
         absorbing_boundary_ = true;
       }
     } else
-      throw std::runtime_error("Absorbing constraints JSON not found");
+      throw std::runtime_error("Absorbing constraints JSON data not found");
 
   } catch (std::exception& exception) {
-    console_->warn("#{}: Absorbing conditions are undefined {} ", __LINE__,
+    console_->warn("#{}: Absorbing conditions are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1609,7 +1761,8 @@ void mpm::MPMBase<Tdim>::nodal_absorbing_constraints() {
         constraints_->assign_nodal_absorbing_constraint(nset_id, a_constraint);
     if (!absorbing_constraints)
       throw std::runtime_error(
-          "Nodal absorbing constraint is not properly assigned");
+          "mpm::base::nodal_absorbing_constraints(): Nodal absorbing "
+          "constraints are not properly applied");
   }
 }
 
@@ -1627,13 +1780,14 @@ void mpm::MPMBase<Tdim>::cell_entity_sets(const Json& mesh_props,
             (io_->entity_sets(io_->file_name(entity_sets), "cell_sets")),
             check_duplicates);
         if (!cell_sets)
-          throw std::runtime_error("Cell sets are not properly assigned");
+          throw std::runtime_error(
+              "Cell entity sets are not properly assigned or "
+              "JSON data not found");
       }
     } else
-      throw std::runtime_error("Cell entity sets JSON not found");
-
+      throw std::runtime_error("Cell entity sets JSON data not found");
   } catch (std::exception& exception) {
-    console_->warn("#{}: Cell entity sets are undefined {} ", __LINE__,
+    console_->warn("#{}: Cell entity sets are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1657,10 +1811,10 @@ void mpm::MPMBase<Tdim>::particles_cells(
               "Particle cells are not properly assigned to particles");
       }
     } else
-      throw std::runtime_error("Particle cells JSON not found");
+      throw std::runtime_error("Particle cells JSON data not found");
 
   } catch (std::exception& exception) {
-    console_->warn("#{}: Particle cells are undefined {} ", __LINE__,
+    console_->warn("#{}: Particle cells are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1683,9 +1837,9 @@ void mpm::MPMBase<Tdim>::particles_volumes(
               "Particles volumes are not properly assigned");
       }
     } else
-      throw std::runtime_error("Particle volumes JSON not found");
+      throw std::runtime_error("Particle volumes JSON data not found");
   } catch (std::exception& exception) {
-    console_->warn("#{}: Particle volumes are undefined {} ", __LINE__,
+    console_->warn("#{}: Particle volumes are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1723,9 +1877,10 @@ void mpm::MPMBase<Tdim>::particle_velocity_constraints() {
                                                    velocity_constraint);
       }
     } else
-      throw std::runtime_error("Particle velocity constraints JSON not found");
+      throw std::runtime_error(
+          "Particle velocity constraints JSON data not found");
   } catch (std::exception& exception) {
-    console_->warn("#{}: Particle velocity constraints are undefined {} ",
+    console_->warn("#{}: Particle velocity constraints are undefined; {}",
                    __LINE__, exception.what());
   }
 }
@@ -1773,10 +1928,10 @@ void mpm::MPMBase<Tdim>::particles_stresses(
         }
       }
     } else
-      throw std::runtime_error("Particle stresses JSON not found");
+      throw std::runtime_error("Particle stresses JSON data not found");
 
   } catch (std::exception& exception) {
-    console_->warn("#{}: Particle stresses are undefined {} ", __LINE__,
+    console_->warn("#{}: Particle stresses are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -1804,7 +1959,8 @@ void mpm::MPMBase<Tdim>::particles_pore_pressures(
             throw std::runtime_error(
                 "Particles pore pressures are not properly assigned");
         } else
-          throw std::runtime_error("Particle pore pressures JSON not found");
+          throw std::runtime_error(
+              "Particle pore pressures JSON data not found");
       } else if (type == "water_table") {
         // Initialise water tables
         std::map<double, double> reference_points;
@@ -1842,7 +1998,7 @@ void mpm::MPMBase<Tdim>::particles_pore_pressures(
         } else {
           throw std::runtime_error(
               "In order to use the option water table, \"gravity\" should be "
-              "specified in the \"external_loading_conditions\"! ");
+              "specified in the \"external_loading_conditions\"");
         }
 
         // Initialise particles pore pressures by watertable
@@ -1861,10 +2017,10 @@ void mpm::MPMBase<Tdim>::particles_pore_pressures(
             "Particle pore pressures generator type is not properly "
             "specified");
     } else
-      throw std::runtime_error("Particle pore pressure JSON not found");
+      throw std::runtime_error("Particle pore pressure JSON data not found");
 
   } catch (std::exception& exception) {
-    console_->warn("#{}: Particle pore pressures are undefined {} ", __LINE__,
+    console_->warn("#{}: Particle pore pressures are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -2057,15 +2213,15 @@ void mpm::MPMBase<Tdim>::particle_entity_sets(bool check_duplicates) {
         bool particle_sets = mesh_->create_particle_sets(
             (io_->entity_sets(io_->file_name(entity_sets), "particle_sets")),
             check_duplicates);
-
         if (!particle_sets)
-          throw std::runtime_error("Particle set creation failed");
+          throw std::runtime_error(
+              "Particle entity sets are not properly assigned or "
+              "JSON data not found");
       }
     } else
-      throw std::runtime_error("Particle entity set JSON not found");
-
+      throw std::runtime_error("Particle entity set JSON data not found");
   } catch (std::exception& exception) {
-    console_->warn("#{}: Particle sets are undefined {} ", __LINE__,
+    console_->warn("#{}: Particle entity sets are undefined; {}", __LINE__,
                    exception.what());
   }
 }
@@ -2111,8 +2267,8 @@ bool mpm::MPMBase<Tdim>::initialise_damping(const Json& damping_props) {
     damping_factor_ = damping_props.at("damping_factor").template get<double>();
 
   } catch (std::exception& exception) {
-    console_->warn("#{}: Damping parameters are undefined {} ", __LINE__,
-                   exception.what());
+    console_->warn("#{}: Damping parameters are not properly specified; {}",
+                   __LINE__, exception.what());
     status = false;
   }
 
@@ -2241,9 +2397,9 @@ void mpm::MPMBase<Tdim>::initialise_linear_solver(
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
     if (solver_type != "KrylovPETSC" && mpi_size > 1) {
       console_->warn(
-          "The linear solver for DOF:\'{}\' in MPI setting is "
-          "automatically set to default: \'KrylovPETSC\'. Only "
-          "\'KrylovPETSC\' solver is supported for MPI.",
+          "The linear solver for DOF \"{}\" in MPI setting is "
+          "automatically set to default, \"KrylovPETSC\"; Only "
+          "\"KrylovPETSC\" solver is supported for MPI",
           dof);
       solver_type = "KrylovPETSC";
     }
@@ -2383,7 +2539,8 @@ void mpm::MPMBase<Tdim>::initialise_nonlocal_mesh(const Json& mesh_props) {
       }
     } else {
       throw std::runtime_error(
-          "Unable to initialise nonlocal mesh for cell type: " + cell_type);
+          "Unable to initialise nonlocal mesh for cell type \"" + cell_type +
+          "\"");
     }
 
     //! Update number of nodes in cell
@@ -2391,7 +2548,7 @@ void mpm::MPMBase<Tdim>::initialise_nonlocal_mesh(const Json& mesh_props) {
                                      nonlocal_properties);
 
   } catch (std::exception& exception) {
-    console_->warn("{} #{}: initialising nonlocal mesh failed! ", __FILE__,
+    console_->warn("{} #{}: initialising nonlocal mesh failed; {}", __FILE__,
                    __LINE__, exception.what());
   }
 }
