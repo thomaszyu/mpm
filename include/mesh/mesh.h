@@ -389,6 +389,7 @@ class Mesh {
   template <unsigned Tsize>
   std::vector<Eigen::Matrix<double, Tsize, 1>> points_tensor_data(
       const std::string& attribute) const;
+      
   //! Return nodes scalar data
   //! \param[in] attribute Name of the scalar data attribute
   //! \param[in] phase Index corresponding to the phase
