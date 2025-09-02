@@ -12,6 +12,7 @@
 #include "convergence_criterion_residual.h"
 #include "convergence_criterion_solution.h"
 #include "solver_base.h"
+#include "vector"
 
 namespace mpm {
 
@@ -22,6 +23,8 @@ namespace mpm {
 template <unsigned Tdim>
 class MPMImplicit : public MPMBase<Tdim> {
  public:
+ //! Define a vector of size dimension
+  using VectorDim = Eigen::Matrix<double, Tdim, 1>;
   //! Default constructor
   MPMImplicit(const std::shared_ptr<IO>& io);
 
@@ -69,7 +72,7 @@ class MPMImplicit : public MPMBase<Tdim> {
   //! FOR RFT ONLY
   //! Write plate force to file for RFT
   //! \ingroup Implicit
-  void write_force(double time, double normal_force);
+  void write_force(double time, double x_force, double y_force);
 
   /**@}*/
 

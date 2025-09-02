@@ -122,6 +122,7 @@ template <unsigned Tdim>
 void mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set(std::set<mpm::Index> &plate_boundary_node_set) {
   for (unsigned i = 0; i < nodes_.size(); i++) {
     plate_boundary_node_set.insert(nodes_[i]->id());
+    // std::cout << "node set size: " << plate_boundary_node_set.size() << std::endl;
   }
 }
 
