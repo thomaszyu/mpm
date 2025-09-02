@@ -811,20 +811,6 @@ class Mesh {
   //! UpperBoundary = 4
   bool assign_nodal_nonlocal_type(int set_id, unsigned dir, unsigned node_type);
 
-  //! FOR RFT
-  //! \param[in] phase phase
-  //! \retval plate_force plate force vector
-  VectorDim compute_plate_force(unsigned phase);
-
-  //! FOR RFT
-  //! \retval normal_vector normal unit vector
-  VectorDim compute_plate_normal();
-
-  // FOR RFT
-  //! \param[in] phase phase
-  //! \retval normal_force
-  VectorDim compute_normal_plate_force(unsigned phase, unsigned step);
-
   /**@}*/
 
  private:
