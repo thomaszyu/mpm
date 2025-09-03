@@ -30,6 +30,12 @@ inline Eigen::Matrix<double, 3, 1> zero() {
 
 //! Zero
 template <>
+inline Eigen::Matrix<double, 6, 1> zero() {
+  return Eigen::Matrix<double, 6, 1>::Zero();
+}
+
+//! Zero
+template <>
 inline double zero() {
   return 0.;
 }
@@ -51,4 +57,4 @@ enum class VelocityUpdate { FLIP, PIC, ASFLIP, TPIC, APIC };
 
 }  // namespace mpm
 
-#endif  // MPM_DATA_TYPES_H_
+#endif  // MPM_DATA_TYPES_H_zzz
