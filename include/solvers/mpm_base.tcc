@@ -995,7 +995,7 @@ void mpm::MPMBase<Tdim>::write_vtk_points(mpm::Index step,
   const std::string extension = ".vtp";
   const std::string attribute = "geometry";
   auto meshfile =
-      io_->output_file(attribute + "_point", extension, uuid_, step, max_steps)
+      io_->output_file(attribute + "_point", extension, uuid_,f step, max_steps)
           .string();
   vtk_writer->write_geometry(meshfile);
 
