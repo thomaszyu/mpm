@@ -6,7 +6,6 @@
 #endif
 
 #include "mpm_scheme.h"
-#include "force_writer.h"
 
 namespace mpm {
 
