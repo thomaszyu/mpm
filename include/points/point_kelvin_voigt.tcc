@@ -76,7 +76,7 @@ template <unsigned Tdim>
 void mpm::PointKelvinVoigt<Tdim>::compute_updated_position(
     double dt, unsigned phase, mpm::VelocityUpdate velocity_update) noexcept {
   // Define default velocity update scheme
-  double blending_ratio = 1.0;
+  // double blending_ratio = 1.0;
   switch (velocity_update) {
     case mpm::VelocityUpdate::FLIP:
       // this->compute_updated_position_flip(dt, blending_ratio, phase);
