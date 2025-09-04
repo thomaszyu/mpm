@@ -117,6 +117,17 @@ void mpm::PointDirichletPenalty<Tdim>::compute_updated_position(
 }
 
 
+//! RFT ONLY -- Add plate boundary nodes into mesh set
+template <unsigned Tdim>
+void mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set(
+  std::set<mpm::Index> &plate_boundary_node_set) {
+
+    for (unsigned i = 0; i < nodes_.size(); i++) {
+      plate_boundary_node_set.insert(nodes_[i]->id());
+    }
+}
+
+
 //! Map penalty stiffness matrix to cell
 template <unsigned Tdim>
 inline bool mpm::PointDirichletPenalty<Tdim>::map_stiffness_matrix_to_cell(double newmark_beta,

@@ -69,6 +69,12 @@ class PointDirichletPenalty : public PointBase<Tdim> {
   void compute_updated_position(double dt, unsigned phase, 
                                 mpm::VelocityUpdate velocity_update = mpm::VelocityUpdate::APIC) noexcept override;
 
+
+  //! RFT ONLY -- Add plate boundary nodes into mesh set
+  //! \param[in] plate_boundary_node_set Set of boundary nodes to add to
+  void add_boundary_nodes_to_set(std::set<mpm::Index> &plate_boundary_node_set);
+
+  
   //! Map point stiffness matrix to cell
   inline bool map_stiffness_matrix_to_cell(double newmark_beta,
   double newmark_gamma, double dt) override;

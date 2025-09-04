@@ -3199,20 +3199,16 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigne
   // make set of node ids adjacent to plate, empty set
   std::set<mpm::Index> plate_boundary_nodes_set; 
 
-  // populate set with nodes
-  // pseudocode: iterate over points, get node ids, add to set (no duplicates)
-  // iterate_over_points(
-  //   std::bind(&mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set, 
-  //     std::placeholders::_1, std::ref(plate_boundary_nodes_set)));
 
-  // TODO LOOK HERE: THERE ARE POINTS BUT THEYRE NOT BEING ADDED!!
+  // populate set with nodes
   iterate_over_points([&plate_boundary_nodes_set](const auto& point_ptr_base) {
     auto point_ptr = std::dynamic_pointer_cast<mpm::PointDirichletPenalty<Tdim>>(point_ptr_base);
     if (point_ptr) {
       #pragma omp critical
       {
-        // add points in thread_safe way -- not ideal but it works
+        // add points in thread_safe way
         point_ptr->add_boundary_nodes_to_set(plate_boundary_nodes_set);
+        // this is not optimal but there arent many points so it's okay
       }
     }
   });
@@ -3256,33 +3252,33 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigne
     #pragma omp parallel for reduction(+:acc0,acc1,acc2) schedule(runtime)
     for (size_t i = 0; i < node_ptrs.size(); i++) {
       const auto& node_ptr = node_ptrs[i];
-      const auto& node_mpi_ranks = node_ptr->mpi_ranks();
+      // const auto& node_mpi_ranks = node_ptr->mpi_ranks();
 
-      if (node_mpi_ranks.size() > 1) {
-        std::cout << "rank " << rank << ": node " << node_ptr->id() << " is in " << node_mpi_ranks.size() << " ranks" << std::endl;
-      }
+      // if (node_mpi_ranks.size() > 1) {
+      //   std::cout << "rank " << rank << ": node " << node_ptr->id() << " is in " << node_mpi_ranks.size() << " ranks" << std::endl;
+      // }
 
-      // find how many submeshes w/ points each node belongs to
-      unsigned n_ranks = 1;
-      for (auto& x : node_mpi_ranks) {
-          if (neighbour_mesh_ids_with_points.find(x) != neighbour_mesh_ids_with_points.end()) {
-              n_ranks++;
-              std::cout << "node " << node_ptr->id() << " neighbor found" << std::endl;
-          }
-      }
-      double prefactor = (n_ranks <= 1) ? 1.0 : (static_cast<double>(n_ranks - 1) / n_ranks);
+      // // find how many submeshes w/ points each node belongs to
+      // unsigned n_ranks = 1;
+      // for (auto& x : node_mpi_ranks) {
+      //     if (neighbour_mesh_ids_with_points.find(x) != neighbour_mesh_ids_with_points.end()) {
+      //         n_ranks++;
+      //         std::cout << "node " << node_ptr->id() << " neighbor found" << std::endl;
+      //     }
+      // }
+      // double prefactor = (n_ranks <= 1) ? 1.0 : (static_cast<double>(n_ranks - 1) / n_ranks);
 
       auto node_force = node_ptr->internal_force(phase);
-      acc0 += prefactor * node_force[0];
-      if (Tdim > 1) acc1 += prefactor * node_force[1];
-      if (Tdim > 2) acc2 += prefactor * node_force[2];
+      acc0 += node_force[0];
+      if (Tdim > 1) acc1 += node_force[1];
+      if (Tdim > 2) acc2 += node_force[2];
 
-      #pragma omp critical
-      {
-          if (prefactor != 1) {
-            std::cout << "node " << node_ptr->id() << " has force " << node_force[0] << " " << node_force[1] << "with prefactor " << prefactor << std::endl;
-          }
-      }
+      // #pragma omp critical
+      // {
+      //     if (prefactor != 1) {
+      //       std::cout << "node " << node_ptr->id() << " has force " << node_force[0] << " " << node_force[1] << "with prefactor " << prefactor << std::endl;
+      //     }
+      // }
     }
 
     // combine accumulators into force_vec
@@ -3308,97 +3304,4 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigne
     std::cout << "global force " << global_force << std::endl;
   }
   return global_force;
-}
-
-// FOR RFT
-//! Compute the plate's normal unit vector (if possible)
-// NOTE: THIS ASSUMES THAT WE HAVE A 1 DIMENSIONAL PLATE IN THE XY PLANE!!
-// NEED TO FIX FOR 3D RFT
-template <unsigned Tdim>
-typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_normal() {
-
-  VectorDim normal_vector;
-  normal_vector.setZero();
-    
-  int rank, size;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-  std::cout << "Rank " << rank << " of " << size
-            << " has " << points_.size() << " points" << std::endl;
-
-  // make sure there are at least 2 points in submesh
-  if (points_.size() >= 2) {
-    const auto& start_point = points_[0];
-    const auto& end_point = points_[points_.size() - 1]; 
-    if (start_point == end_point) { throw std::runtime_error("RFT: Start point = end point!"); }
-
-    const auto& start_coords = start_point->coordinates();
-    const auto& end_coords = end_point->coordinates();
-    VectorDim disp = end_coords - start_coords; // vector in plate plane
-
-    // edge cases to avoid division by zero
-    if (disp[0] == 0) { // no x displacement --> vertical plate
-      if (disp.size() == 2) {
-        normal_vector << 1.0, 0.0;      // tdim = 2
-      } else if (disp.size() == 3) {
-        normal_vector << 1.0, 0.0, 0.0; // tdim = 3
-      } 
-    } else if (disp[1] == 0) { // no y displacement --> horizontal plate
-      if (disp.size() == 2) {
-        normal_vector << 0.0, 1.0;
-      } else if (disp.size() == 3) {
-        normal_vector << 0.0, 1.0, 0.0;
-      } 
-    } else {
-      normal_vector = disp;
-      normal_vector[0] = -disp[1];
-      normal_vector[1] = disp[0];
-      double length = normal_vector.norm();
-      normal_vector = normal_vector / length;
-    }
-  }
-  
-  // normal vector is 0 here if there are not 2 or more points
-  bool local_flag = (normal_vector.norm() > 0);
-  bool global_flag;
-
-  #ifdef USE_MPI
-    MPI_Allreduce(&local_flag, &global_flag, 1, MPI_C_BOOL, MPI_LOR, MPI_COMM_WORLD);
-  #else
-    global_flag = local_flag;
-  #endif 
-
-  if (global_flag) {
-    std::cout << normal_vector[0] << " " << normal_vector[0] << std::endl;
-    return normal_vector;
-  } else {
-    throw std::runtime_error("RFT: Normal vector computation error!");
-  }
-}
-
-// NOTE: The above function is not being called. The reason is that the 
-/* "Normal vector computation error!" keeps happening as somehow points_ has
-0 points on every rank, despite the addition of points into the mesh being 
-initially successful.*/
-
-// FOR RFT
-//! Using the plate normal vector and total force, compute the normal plate force
-template <unsigned Tdim>
-typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_normal_plate_force(unsigned phase, unsigned step) {
-  // if (step <= 100) {
-  //   return 0.0;
-  // }
-
-  // Compute force vector for RFT
-  VectorDim total_plate_force = this->compute_plate_force(phase);
-  return total_plate_force;
-
-  // Compute normal vector for RFT
-  // VectorDim normal_plate_vector = this->compute_plate_normal();
-
-  // take dot product with normal vector to compute normal force contribution
-  // double normal_force = (normal_plate_vector.array() * total_plate_force.array()).sum();
-  // normal_force = std::abs(normal_force); // sign correction
-  // return normal_force;
 }

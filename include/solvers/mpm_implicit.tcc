@@ -540,4 +540,46 @@ void mpm::MPMImplicit<Tdim>::finalise_newton_raphson_iteration() {
                                           
   // Particle stress, strain and volume
   mpm_scheme_->update_particle_stress_strain_volume();
+
+  // RFT ONLY -- compute plate force (for 1 phase only)
+  VectorDim plate_force = mesh_->compute_plate_force(phase_);
+
+  // Write force IO
+  double curr_time = dt_ * step_; // curr time = dt * curr step
+  write_force(curr_time, plate_force);
+}
+
+
+// RFT ONLY -- write force output
+template <unsigned Tdim>
+void mpm::MPMImplicit<Tdim>::write_force(double time, 
+                                        const VectorDim& force_data) {
+  // make sure outfile is only written to once
+  int rank = 0;
+  // get MPI rank if using MPI
+  #ifdef USE_MPI
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  #endif
+
+  // ensure that the output file is only written to once
+  if (rank == 0) {
+    std::string path = io_->working_dir();
+    path = path + "force_data.txt";
+
+    std::ofstream outfile(path, std::ios::app); // append
+    if (!outfile) {
+      std::cerr << "Error opening file: " << path << "\n";
+      return;
+    }
+
+    std::string output = std::to_string(time);
+
+    for (unsigned i = 0; i < Tdim; i++) {
+      output = output + " " + std::to_string(force_data[i]);
+    }
+
+    outfile << output << std::endl;  // append value to file
+    outfile.close();
+  }
+  return;
 }
