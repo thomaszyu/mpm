@@ -24,6 +24,12 @@ mpm::Node<Tdim, Tdof, Tnphases>::Node(
   this->scalar_properties_["mass"] = [&](unsigned phase) {
     return mass(phase);
   };
+  this->scalar_properties_["volume"] = [&](unsigned phase) {
+    return volume(phase);
+  };
+  this->scalar_properties_["pressure"] = [&](unsigned phase) {
+    return pressure(phase);
+  };
   this->vector_properties_["displacements"] = [&](unsigned phase) {
     return displacement(phase);
   };
@@ -32,6 +38,12 @@ mpm::Node<Tdim, Tdof, Tnphases>::Node(
   };
   this->vector_properties_["accelerations"] = [&](unsigned phase) {
     return acceleration(phase);
+  };
+  this->vector_properties_["external_forces"] = [&](unsigned phase) {
+    return external_force(phase);
+  };
+  this->vector_properties_["internal_forces"] = [&](unsigned phase) {
+    return internal_force(phase);
   };
 }
 

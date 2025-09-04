@@ -232,7 +232,7 @@ void VtkWriter::write_scalar_node_data(const std::string& filename,
 void VtkWriter::write_vector_node_data(const std::string& filename,
                                        const std::vector<Eigen::Vector3d>& data,
                                        const std::string& data_field) {
-
+                                        
   // Create a polydata to store everything in it
   auto pdata = vtkSmartPointer<vtkPolyData>::New();
 

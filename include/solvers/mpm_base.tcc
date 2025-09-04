@@ -45,7 +45,8 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
       // Vector variables
       {"displacements", VariableType::Vector},
       {"velocities", VariableType::Vector},
-      {"accelerations", VariableType::Vector}};
+      {"accelerations", VariableType::Vector},
+      {"internal_forces", VariableType::Vector}};
 
   try {
     analysis_ = io_->analysis();
@@ -262,7 +263,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
     }
   } else
     console_->warn(
-        "{} #{}: No VTK nodevariable were specified, none will be generated",
+        "{} #{}: No VTK node variables were specified, none will be generated",
         __FILE__, __LINE__);
 }
 
