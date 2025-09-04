@@ -3171,3 +3171,234 @@ bool mpm::Mesh<Tdim>::assign_nodal_nonlocal_type(int set_id, unsigned dir,
   }
   return status;
 }
+
+
+// FOR RFT
+//! Compute the total plate force
+template <unsigned Tdim>
+typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigned phase) {
+  // NOTE THIS IS FOR 2D ONLY
+
+  #ifdef USE_MPI
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  #else
+    int rank = 0;
+  #endif
+
+  if (points_.size() > 0) {
+    std::cout << "num points in rank " << rank << ": " << points_.size() << std::endl;
+  }
+  
+
+  // initialize local force vector
+  VectorDim force_vec;
+  force_vec.setZero();
+
+
+  // make set of node ids adjacent to plate, empty set
+  std::set<mpm::Index> plate_boundary_nodes_set; 
+
+  // populate set with nodes
+  // pseudocode: iterate over points, get node ids, add to set (no duplicates)
+  // iterate_over_points(
+  //   std::bind(&mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set, 
+  //     std::placeholders::_1, std::ref(plate_boundary_nodes_set)));
+
+  // TODO LOOK HERE: THERE ARE POINTS BUT THEYRE NOT BEING ADDED!!
+  iterate_over_points([&plate_boundary_nodes_set](const auto& point_ptr_base) {
+    auto point_ptr = std::dynamic_pointer_cast<mpm::PointDirichletPenalty<Tdim>>(point_ptr_base);
+    if (point_ptr) {
+      #pragma omp critical
+      {
+        // add points in thread_safe way -- not ideal but it works
+        point_ptr->add_boundary_nodes_to_set(plate_boundary_nodes_set);
+      }
+    }
+  });
+
+  if (points_.size() > 0) {
+    std::cout << "rank " << rank << ": num of neighbour meshes: " << neighbour_meshes_.size() << std::endl;
+  }
+  
+
+  // figure out neighbor mesh ids (that have points inside)
+  std::set<unsigned> neighbour_mesh_ids_with_points;
+  for (const auto& kv : neighbour_meshes_) {
+      const auto& mesh_id   = kv.first;   // key
+      const auto& mesh_ptr  = kv.second;  // shared_ptr<mpm::Mesh<Tdim>>
+
+      if (mesh_ptr && mesh_ptr->npoints() > 0) {
+          neighbour_mesh_ids_with_points.insert(mesh_id);
+          std::cout << "rank " << rank << " has rank " << mesh_id << " as neighbor with id = " << mesh_ptr->id() << std::endl;
+      }
+  }
+
+  // copy node shared_ptrs into a local vector (safe to use in parallel)
+  std::vector<std::shared_ptr<mpm::NodeBase<Tdim>>> node_ptrs;
+  node_ptrs.reserve(plate_boundary_nodes_set.size());
+  for (auto id : plate_boundary_nodes_set) {
+    auto it = map_nodes_.find(id);
+    if (it != map_nodes_.end() && it->second) {
+      node_ptrs.push_back(it->second);
+    } else {
+      // helpful debug
+      std::cerr << "Rank " << rank << " WARNING: node id " << id << " missing or null\n";
+    }
+  }
+
+
+  // make sure there is at least one boundary node before computing force
+  if (!node_ptrs.empty()) {
+    double acc0 = 0.0, acc1 = 0.0, acc2 = 0.0;
+    std::cout << "rank " << rank << ": " << points_.size() << " points and " << node_ptrs.size() << " nodes" << std::endl;
+
+    #pragma omp parallel for reduction(+:acc0,acc1,acc2) schedule(runtime)
+    for (size_t i = 0; i < node_ptrs.size(); i++) {
+      const auto& node_ptr = node_ptrs[i];
+      const auto& node_mpi_ranks = node_ptr->mpi_ranks();
+
+      if (node_mpi_ranks.size() > 1) {
+        std::cout << "rank " << rank << ": node " << node_ptr->id() << " is in " << node_mpi_ranks.size() << " ranks" << std::endl;
+      }
+
+      // find how many submeshes w/ points each node belongs to
+      unsigned n_ranks = 1;
+      for (auto& x : node_mpi_ranks) {
+          if (neighbour_mesh_ids_with_points.find(x) != neighbour_mesh_ids_with_points.end()) {
+              n_ranks++;
+              std::cout << "node " << node_ptr->id() << " neighbor found" << std::endl;
+          }
+      }
+      double prefactor = (n_ranks <= 1) ? 1.0 : (static_cast<double>(n_ranks - 1) / n_ranks);
+
+      auto node_force = node_ptr->internal_force(phase);
+      acc0 += prefactor * node_force[0];
+      if (Tdim > 1) acc1 += prefactor * node_force[1];
+      if (Tdim > 2) acc2 += prefactor * node_force[2];
+
+      #pragma omp critical
+      {
+          if (prefactor != 1) {
+            std::cout << "node " << node_ptr->id() << " has force " << node_force[0] << " " << node_force[1] << "with prefactor " << prefactor << std::endl;
+          }
+      }
+    }
+
+    // combine accumulators into force_vec
+    force_vec[0] = acc0;
+    if (Tdim > 1) force_vec[1] = acc1;
+    if (Tdim > 2) force_vec[2] = acc2;
+  } // end if
+  
+
+  // for MPI, sum force across all MPI ranks if there are many ranks
+  VectorDim global_force;
+  global_force.setZero();
+
+  #ifdef USE_MPI
+    MPI_Allreduce(force_vec.data(), global_force.data(), static_cast<int>(force_vec.size()), 
+      MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  #else 
+    global_force = force_vec;
+  #endif
+
+  // return total force
+  if (rank == 0) {
+    std::cout << "global force " << global_force << std::endl;
+  }
+  return global_force;
+}
+
+// FOR RFT
+//! Compute the plate's normal unit vector (if possible)
+// NOTE: THIS ASSUMES THAT WE HAVE A 1 DIMENSIONAL PLATE IN THE XY PLANE!!
+// NEED TO FIX FOR 3D RFT
+template <unsigned Tdim>
+typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_normal() {
+
+  VectorDim normal_vector;
+  normal_vector.setZero();
+    
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  std::cout << "Rank " << rank << " of " << size
+            << " has " << points_.size() << " points" << std::endl;
+
+  // make sure there are at least 2 points in submesh
+  if (points_.size() >= 2) {
+    const auto& start_point = points_[0];
+    const auto& end_point = points_[points_.size() - 1]; 
+    if (start_point == end_point) { throw std::runtime_error("RFT: Start point = end point!"); }
+
+    const auto& start_coords = start_point->coordinates();
+    const auto& end_coords = end_point->coordinates();
+    VectorDim disp = end_coords - start_coords; // vector in plate plane
+
+    // edge cases to avoid division by zero
+    if (disp[0] == 0) { // no x displacement --> vertical plate
+      if (disp.size() == 2) {
+        normal_vector << 1.0, 0.0;      // tdim = 2
+      } else if (disp.size() == 3) {
+        normal_vector << 1.0, 0.0, 0.0; // tdim = 3
+      } 
+    } else if (disp[1] == 0) { // no y displacement --> horizontal plate
+      if (disp.size() == 2) {
+        normal_vector << 0.0, 1.0;
+      } else if (disp.size() == 3) {
+        normal_vector << 0.0, 1.0, 0.0;
+      } 
+    } else {
+      normal_vector = disp;
+      normal_vector[0] = -disp[1];
+      normal_vector[1] = disp[0];
+      double length = normal_vector.norm();
+      normal_vector = normal_vector / length;
+    }
+  }
+  
+  // normal vector is 0 here if there are not 2 or more points
+  bool local_flag = (normal_vector.norm() > 0);
+  bool global_flag;
+
+  #ifdef USE_MPI
+    MPI_Allreduce(&local_flag, &global_flag, 1, MPI_C_BOOL, MPI_LOR, MPI_COMM_WORLD);
+  #else
+    global_flag = local_flag;
+  #endif 
+
+  if (global_flag) {
+    std::cout << normal_vector[0] << " " << normal_vector[0] << std::endl;
+    return normal_vector;
+  } else {
+    throw std::runtime_error("RFT: Normal vector computation error!");
+  }
+}
+
+// NOTE: The above function is not being called. The reason is that the 
+/* "Normal vector computation error!" keeps happening as somehow points_ has
+0 points on every rank, despite the addition of points into the mesh being 
+initially successful.*/
+
+// FOR RFT
+//! Using the plate normal vector and total force, compute the normal plate force
+template <unsigned Tdim>
+typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_normal_plate_force(unsigned phase, unsigned step) {
+  // if (step <= 100) {
+  //   return 0.0;
+  // }
+
+  // Compute force vector for RFT
+  VectorDim total_plate_force = this->compute_plate_force(phase);
+  return total_plate_force;
+
+  // Compute normal vector for RFT
+  // VectorDim normal_plate_vector = this->compute_plate_normal();
+
+  // take dot product with normal vector to compute normal force contribution
+  // double normal_force = (normal_plate_vector.array() * total_plate_force.array()).sum();
+  // normal_force = std::abs(normal_force); // sign correction
+  // return normal_force;
+}
