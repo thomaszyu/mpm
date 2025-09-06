@@ -21,9 +21,11 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
   // Empty all materials
   materials_.clear();
 
-  // Variable list
-  tsl::robin_map<std::string, VariableType> variables = {
+  // Particle variable list
+  tsl::robin_map<std::string, VariableType> particle_variables = {
       // Scalar variables
+      {"id", VariableType::Scalar},
+      {"material", VariableType::Scalar},
       {"mass", VariableType::Scalar},
       {"volume", VariableType::Scalar},
       {"mass_density", VariableType::Scalar},
@@ -35,6 +37,16 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
       {"strains", VariableType::Tensor},
       {"stresses", VariableType::Tensor},
       {"smoothed_stresses", VariableType::Tensor},};
+
+  // Node variable list
+  tsl::robin_map<std::string, VariableType> node_variables = {
+      // Scalar variables
+      {"mass", VariableType::Scalar},
+      // Vector variables
+      {"displacements", VariableType::Vector},
+      {"velocities", VariableType::Vector},
+      {"accelerations", VariableType::Vector},
+      {"internal_forces", VariableType::Vector}};
 
   try {
     analysis_ = io_->analysis();
@@ -56,22 +68,27 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
     try {
       if (analysis_.find("mpm_scheme") != analysis_.end())
         stress_update_ = analysis_["mpm_scheme"].template get<std::string>();
+      else
+        throw std::runtime_error("\"mpm_scheme\" is undefined");
     } catch (std::exception& exception) {
       console_->warn(
-          "{} #{}: {}. Stress update method is not specified, using USF as "
-          "default",
+          "{} #{}: Stress update method is not specified, using \"usf\" as "
+          "default; {}",
           __FILE__, __LINE__, exception.what());
     }
 
     // Velocity update
     std::string vel_update_type;
     try {
-      if (analysis_["velocity_update"].is_boolean()) {
-        bool v_update = analysis_["velocity_update"].template get<bool>();
-        vel_update_type = (v_update) ? "pic" : "flip";
+      if (analysis_.find("velocity_update") != analysis_.end()) {
+        if (analysis_["velocity_update"].is_boolean()) {
+          bool v_update = analysis_["velocity_update"].template get<bool>();
+          vel_update_type = (v_update) ? "pic" : "flip";
+        } else
+          vel_update_type =
+              analysis_["velocity_update"].template get<std::string>();
       } else
-        vel_update_type =
-            analysis_["velocity_update"].template get<std::string>();
+        throw std::runtime_error("\"velocity_update\" is undefined");
 
       // Check if blending_ratio is specified
       if (analysis_.contains("velocity_update_settings") &&
@@ -84,15 +101,15 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
           blending_ratio_ = 1.0;
           console_->warn(
               "{} #{}: FLIP-PIC Blending ratio is not properly assigned, using "
-              "default value as 1.0.",
+              "1.0 as default",
               __FILE__, __LINE__);
         }
       }
 
     } catch (std::exception& exception) {
       console_->warn(
-          "{} #{}: {} Velocity update method is not properly specified, using "
-          "default as \'flip\'",
+          "{} #{}: Velocity update method is not properly specified, using "
+          "\"flip\" as default; {}",
           __FILE__, __LINE__, exception.what());
       vel_update_type = "flip";
     }
@@ -102,11 +119,13 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
     try {
       if (analysis_.find("damping") != analysis_.end()) {
         if (!initialise_damping(analysis_.at("damping")))
-          throw std::runtime_error("Damping parameters are not defined");
-      }
+          throw std::runtime_error("Damping parameters are undefined");
+      } else
+        throw std::runtime_error("\"damping\" is undefined");
     } catch (std::exception& exception) {
-      console_->warn("{} #{}: Damping is not specified, using none as default",
-                     __FILE__, __LINE__, exception.what());
+      console_->warn(
+          "{} #{}: Damping is not specified, using \"None\" as default; {}",
+          __FILE__, __LINE__, exception.what());
     }
 
     // Math functions
@@ -115,9 +134,13 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
       auto math_functions = io_->json_object("math_functions");
       if (!math_functions.empty())
         this->initialise_math_functions(math_functions);
+      else
+        throw std::runtime_error("");
     } catch (std::exception& exception) {
-      console_->warn("{} #{}: No math functions are defined", __FILE__,
-                     __LINE__, exception.what());
+      console_->warn(
+          "{} #{}: Math functions are undefined; Math functions JSON data not "
+          "found",
+          __FILE__, __LINE__);
     }
 
     post_process_ = io_->post_processing();
@@ -188,7 +211,57 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
   }
   if (!vtk_statevar)
     console_->warn(
-        "{} #{}: No VTK statevariable were specified, none will be generated",
+        "{} #{}: No VTK state variables were specified, none will be generated",
+        __FILE__, __LINE__);
+
+  // VTK node variables
+  // Initialise container with empty map
+  tsl::robin_map<unsigned, std::vector<std::string>> empty_map;
+  vtk_nodevars_.insert(std::make_pair(mpm::VariableType::Scalar, empty_map));
+  vtk_nodevars_.insert(std::make_pair(mpm::VariableType::Vector, empty_map));
+
+  if ((post_process_.find("vtk_nodevars") != post_process_.end()) &&
+      post_process_.at("vtk_nodevars").is_array() &&
+      post_process_.at("vtk_nodevars").size() > 0) {
+    // Iterate over node_vars
+    for (const auto& nvars : post_process_["vtk_nodevars"]) {
+      // Phase id
+      unsigned phase_id = 0;
+      if (nvars.contains("phase_id"))
+        phase_id = nvars.at("phase_id").template get<unsigned>();
+
+      // Node variables
+      if (nvars.at("nodevars").is_array() && nvars.at("nodevars").size() > 0) {
+        // Loop over nodevars and check type
+        for (unsigned i = 0; i < nvars.at("nodevars").size(); ++i) {
+          std::string attribute =
+              nvars["nodevars"][i].template get<std::string>();
+          if (node_variables.find(attribute) != node_variables.end()) {
+            // Inner map
+            auto& inner_map = vtk_nodevars_[node_variables.at(attribute)];
+
+            // Check if inner_map has phase_id
+            // If yes, emplace_back
+            if (inner_map.find(phase_id) != inner_map.end()) {
+              inner_map[phase_id].emplace_back(attribute);
+            }
+            // If not insert
+            else {
+              std::vector<std::string> v{attribute};
+              inner_map.insert(std::make_pair(phase_id, v));
+            }
+          } else {
+            console_->warn(
+                "{} #{}: VTK nodevars '{}' was specified, but is not available "
+                " in variable list ",
+                __FILE__, __LINE__, attribute);
+          }
+        }
+      }
+    }
+  } else
+    console_->warn(
+        "{} #{}: No VTK node variables were specified, none will be generated",
         __FILE__, __LINE__);
 }
 
