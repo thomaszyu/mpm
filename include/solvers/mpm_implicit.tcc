@@ -564,7 +564,7 @@ void mpm::MPMImplicit<Tdim>::write_force(double time,
   // ensure that the output file is only written to once
   if (rank == 0) {
     std::string path = io_->working_dir();
-    path = path + "force_data.txt";
+    path = path + io_->output_folder(); + "force_data.txt";
 
     std::ofstream outfile(path, std::ios::app); // append
     if (!outfile) {
