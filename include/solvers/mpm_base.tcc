@@ -38,6 +38,23 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
       {"stresses", VariableType::Tensor},
       {"smoothed_stresses", VariableType::Tensor},};
 
+  // Point variable list
+  tsl::robin_map<std::string, VariableType> point_variables = {
+      // Scalar variables
+      {"id", VariableType::Scalar},
+      {"material", VariableType::Scalar},
+      {"mass", VariableType::Scalar},
+      {"volume", VariableType::Scalar},
+      {"mass_density", VariableType::Scalar},
+      // Vector variables
+      {"displacements", VariableType::Vector},
+      {"velocities", VariableType::Vector},
+      {"normals", VariableType::Vector},
+      // Tensor variables
+      {"strains", VariableType::Tensor},
+      {"stresses", VariableType::Tensor},
+      {"smoothed_stresses", VariableType::Tensor},};
+
   // Node variable list
   tsl::robin_map<std::string, VariableType> node_variables = {
       // Scalar variables
@@ -155,32 +172,32 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
 
   // VTK particle variables
   // Initialise container with empty vector
-  vtk_vars_.insert(
+  vtk_particlevars_.insert(
       std::make_pair(mpm::VariableType::Scalar, std::vector<std::string>()));
-  vtk_vars_.insert(
+  vtk_particlevars_.insert(
       std::make_pair(mpm::VariableType::Vector, std::vector<std::string>()));
-  vtk_vars_.insert(
+  vtk_particlevars_.insert(
       std::make_pair(mpm::VariableType::Tensor, std::vector<std::string>()));
 
-  if ((post_process_.find("vtk") != post_process_.end()) &&
-      post_process_.at("vtk").is_array() &&
-      post_process_.at("vtk").size() > 0) {
-    // Iterate over vtk
-    for (unsigned i = 0; i < post_process_.at("vtk").size(); ++i) {
+  if ((post_process_.find("vtk_particlevars") != post_process_.end()) &&
+      post_process_.at("vtk_particlevars").is_array() &&
+      post_process_.at("vtk_particlevars").size() > 0) {
+    // Iterate over vtk particle variables
+    for (unsigned i = 0; i < post_process_.at("vtk_particlevars").size(); ++i) {
       std::string attribute =
-          post_process_["vtk"][i].template get<std::string>();
-      if (variables.find(attribute) != variables.end())
-        vtk_vars_[variables.at(attribute)].emplace_back(attribute);
+          post_process_["vtk_particlevars"][i].template get<std::string>();
+      if (particle_variables.find(attribute) != particle_variables.end())
+        vtk_particlevars_[particle_variables.at(attribute)].emplace_back(attribute);
       else {
         console_->warn(
-            "{} #{}: VTK variable '{}' was specified, but is not available "
+            "{} #{}: VTK particle variable '{}' was specified, but is not available "
             "in variable list",
             __FILE__, __LINE__, attribute);
       }
     }
   } else {
     console_->warn(
-        "{} #{}: No VTK variables were specified, none will be generated",
+        "{} #{}: No VTK particle variables were specified, none will be generated",
         __FILE__, __LINE__);
   }
 
@@ -214,6 +231,40 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
         "{} #{}: No VTK state variables were specified, none will be generated",
         __FILE__, __LINE__);
 
+
+  // VTK point variables
+  // Initialise container with empty vector
+  vtk_pointvars_.insert(
+      std::make_pair(mpm::VariableType::Scalar, std::vector<std::string>()));
+  vtk_pointvars_.insert(
+      std::make_pair(mpm::VariableType::Vector, std::vector<std::string>()));
+  vtk_pointvars_.insert(
+      std::make_pair(mpm::VariableType::Tensor, std::vector<std::string>()));
+
+  if ((post_process_.find("vtk_pointvars") != post_process_.end()) &&
+      post_process_.at("vtk_pointvars").is_array() &&
+      post_process_.at("vtk_pointvars").size() > 0) {
+    // Iterate over vtk point variables
+    for (unsigned i = 0; i < post_process_.at("vtk_pointvars").size(); ++i) {
+      std::string attribute =
+          post_process_["vtk_pointvars"][i].template get<std::string>();
+      if (point_variables.find(attribute) != point_variables.end())
+        vtk_pointvars_[point_variables.at(attribute)].emplace_back(attribute);
+      else {
+        console_->warn(
+            "{} #{}: VTK point variable '{}' was specified, but is not available "
+            "in variable list",
+            __FILE__, __LINE__, attribute);
+      }
+    }
+  } else {
+    console_->warn(
+        "{} #{}: No VTK point variables were specified, none will be generated",
+        __FILE__, __LINE__);
+  }
+
+  
+
   // VTK node variables
   // Initialise container with empty map
   tsl::robin_map<unsigned, std::vector<std::string>> empty_map;
@@ -223,7 +274,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
   if ((post_process_.find("vtk_nodevars") != post_process_.end()) &&
       post_process_.at("vtk_nodevars").is_array() &&
       post_process_.at("vtk_nodevars").size() > 0) {
-    // Iterate over node_vars
+    // Iterate over vtk node variables (nvars)
     for (const auto& nvars : post_process_["vtk_nodevars"]) {
       // Phase id
       unsigned phase_id = 0;
@@ -252,7 +303,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
             }
           } else {
             console_->warn(
-                "{} #{}: VTK nodevars '{}' was specified, but is not available "
+                "{} #{}: VTK node variable '{}' was specified, but is not available "
                 " in variable list ",
                 __FILE__, __LINE__, attribute);
           }
@@ -798,14 +849,16 @@ void mpm::MPMBase<Tdim>::write_vtk_particles(mpm::Index step,
                                              mpm::Index max_steps) {
 
   // VTK PolyData writer
-  auto vtk_writer = std::make_unique<VtkWriter>(mesh_->particle_coordinates());
+  auto vtk_writer = std::make_unique<VtkWriter>(mesh_->particle_coordinates(),
+                                                mesh_->nodal_coordinates(),
+                                                mesh_->cell_connectivity(true));
 
   // Write mesh on step 0
   // Get active node pairs use true
   if (step % nload_balance_steps_ == 0)
     vtk_writer->write_mesh(
         io_->output_file("mesh", ".vtp", uuid_, step, max_steps).string(),
-        mesh_->nodal_coordinates(), mesh_->node_pairs(true));
+        mesh_->node_pairs(true));
 
   // Write input geometry to vtk file
   const std::string extension = ".vtp";
@@ -826,8 +879,8 @@ void mpm::MPMBase<Tdim>::write_vtk_particles(mpm::Index step,
   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 #endif
 
-  //! VTK scalar variables
-  for (const auto& attribute : vtk_vars_.at(mpm::VariableType::Scalar)) {
+  //! VTK particle scalar variables
+  for (const auto& attribute : vtk_particlevars_.at(mpm::VariableType::Scalar)) {
     // Write scalar
     auto file =
         io_->output_file(attribute, extension, uuid_, step, max_steps).string();
@@ -847,8 +900,8 @@ void mpm::MPMBase<Tdim>::write_vtk_particles(mpm::Index step,
 #endif
   }
 
-  //! VTK vector variables
-  for (const auto& attribute : vtk_vars_.at(mpm::VariableType::Vector)) {
+  //! VTK particle vector variables
+  for (const auto& attribute : vtk_particlevars_.at(mpm::VariableType::Vector)) {
     // Write vector
     auto file =
         io_->output_file(attribute, extension, uuid_, step, max_steps).string();
@@ -868,8 +921,8 @@ void mpm::MPMBase<Tdim>::write_vtk_particles(mpm::Index step,
 #endif
   }
 
-  //! VTK tensor variables
-  for (const auto& attribute : vtk_vars_.at(mpm::VariableType::Tensor)) {
+  //! VTK particle tensor variables
+  for (const auto& attribute : vtk_particlevars_.at(mpm::VariableType::Tensor)) {
     // Write vector
     auto file =
         io_->output_file(attribute, extension, uuid_, step, max_steps).string();
@@ -915,6 +968,64 @@ void mpm::MPMBase<Tdim>::write_vtk_particles(mpm::Index step,
 #endif
     }
   }
+
+  //! VTK nodal scalar variables
+  for (const auto& vtk_scalar_nodevar :
+       vtk_nodevars_.at(mpm::VariableType::Scalar)) {
+    unsigned phase_id = vtk_scalar_nodevar.first;
+    for (const auto& attribute : vtk_scalar_nodevar.second) {
+      std::string node_phase_attribute =
+          "node_phase" + std::to_string(phase_id) + attribute;
+      // Write state variables
+      auto file = io_->output_file(node_phase_attribute, extension, uuid_, step,
+                                   max_steps)
+                      .string();
+      vtk_writer->write_scalar_node_data(
+          file, mesh_->nodes_scalar_data(attribute, phase_id),
+          node_phase_attribute);
+      // Write a parallel MPI VTK container file
+#ifdef USE_MPI
+      if (mpi_rank == 0 && mpi_size > 1) {
+        auto parallel_file =
+            io_->output_file(node_phase_attribute, ".pvtp", uuid_, step,
+                             max_steps, write_mpi_rank)
+                .string();
+        unsigned ncomponents = 1;
+        vtk_writer->write_parallel_vtk(parallel_file, node_phase_attribute,
+                                       mpi_size, step, max_steps, ncomponents);
+      }
+#endif
+    }
+  }
+
+  //! VTK nodal vector variables
+  for (const auto& vtk_vector_nodevar :
+       vtk_nodevars_.at(mpm::VariableType::Vector)) {
+    unsigned phase_id = vtk_vector_nodevar.first;
+    for (const auto& attribute : vtk_vector_nodevar.second) {
+      std::string node_phase_attribute =
+          "node_phase" + std::to_string(phase_id) + attribute;
+      // Write state variables
+      auto file = io_->output_file(node_phase_attribute, extension, uuid_, step,
+                                   max_steps)
+                      .string();
+      vtk_writer->write_vector_node_data(
+          file, mesh_->nodes_vector_data(attribute, phase_id),
+          node_phase_attribute);
+      // Write a parallel MPI VTK container file
+#ifdef USE_MPI
+      if (mpi_rank == 0 && mpi_size > 1) {
+        auto parallel_file =
+            io_->output_file(node_phase_attribute, ".pvtp", uuid_, step,
+                             max_steps, write_mpi_rank)
+                .string();
+        unsigned ncomponents = 3;
+        vtk_writer->write_parallel_vtk(parallel_file, node_phase_attribute,
+                                       mpi_size, step, max_steps, ncomponents);
+      }
+#endif
+    }
+  }
 }
 
 //! Write VTK files for interface points
@@ -922,8 +1033,9 @@ template <unsigned Tdim>
 void mpm::MPMBase<Tdim>::write_vtk_points(mpm::Index step,
                                           mpm::Index max_steps) {
 
-  // VTK PolyData writer
-  auto vtk_writer = std::make_unique<VtkWriter>(mesh_->point_coordinates());
+  auto vtk_writer = std::make_unique<VtkWriter>(mesh_->point_coordinates(),
+                                                mesh_->nodal_coordinates(),
+                                                mesh_->cell_connectivity(true));
 
   // Write input geometry to vtk file
   const std::string extension = ".vtp";
@@ -945,8 +1057,8 @@ void mpm::MPMBase<Tdim>::write_vtk_points(mpm::Index step,
   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 #endif
 
-  //! VTK scalar variables
-  for (const auto& attribute : vtk_vars_.at(mpm::VariableType::Scalar)) {
+  //! VTK point scalar variables
+  for (const auto& attribute : vtk_pointvars_.at(mpm::VariableType::Scalar)) {
     // Write scalar
     auto file = io_->output_file(attribute + "_point", extension, uuid_, step,
                                  max_steps)
@@ -968,8 +1080,8 @@ void mpm::MPMBase<Tdim>::write_vtk_points(mpm::Index step,
 #endif
   }
 
-  //! VTK vector variables
-  for (const auto& attribute : vtk_vars_.at(mpm::VariableType::Vector)) {
+  //! VTK point vector variables
+  for (const auto& attribute : vtk_pointvars_.at(mpm::VariableType::Vector)) {
     // Write vector
     auto file = io_->output_file(attribute + "_point", extension, uuid_, step,
                                  max_steps)
@@ -991,8 +1103,8 @@ void mpm::MPMBase<Tdim>::write_vtk_points(mpm::Index step,
 #endif
   }
 
-  //! VTK tensor variables
-  for (const auto& attribute : vtk_vars_.at(mpm::VariableType::Tensor)) {
+  //! VTK point tensor variables
+  for (const auto& attribute : vtk_pointvars_.at(mpm::VariableType::Tensor)) {
     // Write vector
     auto file = io_->output_file(attribute + "_point", extension, uuid_, step,
                                  max_steps)

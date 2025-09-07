@@ -313,9 +313,14 @@ class MPMBase : public MPM {
   //! Mathematical functions
   std::map<unsigned, std::shared_ptr<mpm::FunctionBase>> math_functions_;
   //! VTK particle variables
-  tsl::robin_map<mpm::VariableType, std::vector<std::string>> vtk_vars_;
+  tsl::robin_map<mpm::VariableType, std::vector<std::string>> vtk_particlevars_;
   //! VTK state variables
   tsl::robin_map<unsigned, std::vector<std::string>> vtk_statevars_;
+  //! VTK point variables
+  tsl::robin_map<mpm::VariableType, std::vector<std::string>> vtk_pointvars_;
+  //! VTK node variables
+  tsl::robin_map<mpm::VariableType, tsl::robin_map<unsigned, std::vector<std::string>>>
+      vtk_nodevars_;
   //! Set node concentrated force
   bool set_node_concentrated_force_{false};
   //! Damping type

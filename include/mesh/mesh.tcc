@@ -1811,6 +1811,38 @@ std::vector<Eigen::Matrix<double, Tsize, 1>>
   return tensor_data;
 }
 
+
+//! Return node scalar data
+template <unsigned Tdim>
+std::vector<double> mpm::Mesh<Tdim>::nodes_scalar_data(
+    const std::string& attribute, unsigned phase) const {
+  std::vector<double> scalar_data;
+  scalar_data.reserve(nodes_.size());
+  // Iterate over nodes and add scalar value to data
+  for (auto nitr = nodes_.cbegin(); nitr != nodes_.cend(); ++nitr)
+    scalar_data.emplace_back((*nitr)->scalar_data(attribute, phase));
+  return scalar_data;
+}
+
+//! Return node vector data
+template <unsigned Tdim>
+std::vector<Eigen::Matrix<double, 3, 1>> mpm::Mesh<Tdim>::nodes_vector_data(
+    const std::string& attribute, unsigned phase) const {
+  std::vector<Eigen::Matrix<double, 3, 1>> vector_data;
+  // Iterate over nodes
+  for (auto nitr = nodes_.cbegin(); nitr != nodes_.cend(); ++nitr) {
+    Eigen::Matrix<double, 3, 1> data;
+    data.setZero();
+    auto pdata = (*nitr)->vector_data(attribute, phase);
+    // Fill vector_data to the size of dimensions
+    for (unsigned i = 0; i < pdata.size(); ++i) data(i) = pdata(i);
+    // Add to a vector of data
+    vector_data.emplace_back(data);
+  }
+  return vector_data;
+}
+
+
 //! Assign particles volumes
 template <unsigned Tdim>
 bool mpm::Mesh<Tdim>::assign_particles_volumes(
@@ -2578,6 +2610,42 @@ std::vector<Eigen::Matrix<double, 3, 1>> mpm::Mesh<Tdim>::nodal_coordinates()
   }
   return coordinates;
 }
+
+
+//! Cell connectivity
+template <unsigned Tdim>
+std::vector<std::vector<mpm::Index>> mpm::Mesh<Tdim>::cell_connectivity(
+    bool active) const {
+
+  // Cell connectivity
+  std::vector<std::vector<mpm::Index>> cell_connectivity;
+
+  try {
+    int mpi_rank = 0;
+#ifdef USE_MPI
+    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+#endif
+    if (cells_.size() == 0)
+      throw std::runtime_error("No cells have been initialised!");
+
+    for (auto citr = cells_.cbegin(); citr != cells_.cend(); ++citr) {
+      // If cell connectivity are only requested for active nodes
+      bool get_connectivities =
+          (active == true) ? ((*citr)->rank() == mpi_rank) : true;
+      if (get_connectivities) {
+        const std::vector<mpm::Index>& connectivity =
+            (*citr)->local_nodes_id_connectivity();
+        cell_connectivity.emplace_back(connectivity);
+      }
+    }
+
+  } catch (std::exception& exception) {
+    console_->error("{} #{}: {}\n", __FILE__, __LINE__, exception.what());
+    cell_connectivity.clear();
+  }
+  return cell_connectivity;
+}
+
 
 //! Cell node pairs
 template <unsigned Tdim>
