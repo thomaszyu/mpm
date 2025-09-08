@@ -1,3 +1,7 @@
+#include <iostream>
+#include <iomanip> 
+// TODO DELETE THESE WHEN GETTING RID OF HARDCODE FORCE OUTPUT
+
 //! Constructor with id and coordinates
 template <unsigned Tdim>
 mpm::PointDirichletPenalty<Tdim>::PointDirichletPenalty(Index id,
@@ -82,26 +86,32 @@ void mpm::PointDirichletPenalty<Tdim>::compute_updated_position(
   // TODO fix output internal force -- DELETE THIS
   // copy-paste to chatgpt and ask it to remove duplicates for node id
   // TODO FIX THIS FOR 3D IF WE DO IT LATER (this only works for 2d)
+
+  int rank = 0;
+  #ifdef USE_MPI
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  #endif
+
   
-  // #pragma omp critical 
-  // {
-  //   std::cout << "0 " << id_ << " " << std::setprecision(15) << coordinates_[0] << " " << coordinates_[1] << " 0 0" << std::endl; // output position??
+  #pragma omp critical 
+  {
+    std::cout << rank << " 0 " << id_ << " " << std::setprecision(15) << coordinates_[0] << " " << coordinates_[1] << " 0 0" << std::endl; // output position??
 
   //   // 0 represents point
 
-  //   for (unsigned i = 0; i < nodes_.size(); i++) {
+    for (unsigned i = 0; i < nodes_.size(); i++) {
 
-  //     // std::cout<<no
-  //     const auto& node_coords = nodes_[i]->coordinates() ;
-  //     const auto& node_internal_force = nodes_[i]->internal_force(phase);
-  //     double x_force = node_internal_force[0];
-  //     double y_force = node_internal_force[1];
+      // std::cout<<no
+      const auto& node_coords = nodes_[i]->coordinates() ;
+      const auto& node_internal_force = nodes_[i]->internal_force(phase);
+      double x_force = node_internal_force[0];
+      double y_force = node_internal_force[1];
 
-  //       std::cout << "1 " << nodes_[i]->id() << " " << std::setprecision(15) << node_coords[0] << " " << node_coords[1] << " " << x_force << " " << y_force << std::endl; // outputs force to terminal, matlab-friendly version
+        std::cout << rank << " 1 " << nodes_[i]->id() << " " << std::setprecision(15) << node_coords[0] << " " << node_coords[1] << " " << x_force << " " << y_force << std::endl; // outputs force to terminal, matlab-friendly version
 
         // 1 represents node
 
-        // std::cout << nodes_[i]->id() << " " << x_force << std::endl; // this outputs fx to terminal, matlab-friendly version
+      //   // std::cout << nodes_[i]->id() << " " << x_force << std::endl; // this outputs fx to terminal, matlab-friendly version
 
       // std::cout << “node_id: “ << nodes_[i]->id() << “ x-dir internal_force: ” << internal_force[0] << std::ends; // this outputs fx to terminal
 
@@ -112,8 +122,8 @@ void mpm::PointDirichletPenalty<Tdim>::compute_updated_position(
       // this will give a lot of outputs, just check the steady state
 
       // alternatively can just post process this in matlab
-    //}
-  //}
+    }
+  }
 }
 
 

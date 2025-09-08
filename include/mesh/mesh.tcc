@@ -3281,36 +3281,63 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigne
     }
   });
 
-  if (points_.size() > 0) {
-    std::cout << "rank " << rank << ": num of neighbour meshes: " << neighbour_meshes_.size() << std::endl;
-  }
-  
+  // if using MPI: get global set of relevant node IDs to sum
+    // this is required because of the edge case where nodes need to be summed
+    // but have no nodes in that MPI rank
+  #ifdef USE_MPI
+    // get total # of MPI ranks
+    int size;
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  // figure out neighbor mesh ids (that have points inside)
-  std::set<unsigned> neighbour_mesh_ids_with_points;
-  for (const auto& kv : neighbour_meshes_) {
-      const auto& mesh_id   = kv.first;   // key
-      const auto& mesh_ptr  = kv.second;  // shared_ptr<mpm::Mesh<Tdim>>
+    // convert local set to vector (for MPI use)
+    std::vector<mpm::Index> local_nodes_vec(
+      plate_boundary_nodes_set.begin(), plate_boundary_nodes_set.end());
+      int local_size = static_cast<int>(local_nodes_vec.size());
 
-      if (mesh_ptr && mesh_ptr->npoints() > 0) {
-          neighbour_mesh_ids_with_points.insert(mesh_id);
-          std::cout << "rank " << rank << " has rank " << mesh_id << " as neighbor with id = " << mesh_ptr->id() << std::endl;
-      }
-  }
+    // gather sizes from all ranks
+    std::vector<int> recvcounts(size);
+    MPI_Allgather(&local_size, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, MPI_COMM_WORLD);
+    
+    // compute displacements for Allgatherv
+    std::vector<int> displacements(size);
+    displacements[0] = 0;
+    #pragma omp parallel for
+    for (int i = 1; i < size; i++) {
+      displacements[i] = displacements[i-1] + recvcounts[i-1];
+    }
+    int total = std::accumulate(recvcounts.begin(), recvcounts.end(), 0);
+
+    // gather all data
+    std::vector<mpm::Index> all_data(total);
+    MPI_Allgatherv(local_nodes_vec.data(), local_size, MPI_UNSIGNED_LONG_LONG,
+                   all_data.data(), recvcounts.data(), displacements.data(), MPI_UNSIGNED_LONG_LONG,
+                   MPI_COMM_WORLD);
+    
+    // convert back into set (remove duplicate values)
+    std::set<mpm::Index> nodes_to_sum(all_data.begin(), all_data.end());
+  #else
+    std::set<mpm::Index> nodes_to_sum = plate_boundary_nodes_set;
+  #endif
+
+  // get the nodes to sum over
+
 
   // copy node shared_ptrs into a local vector (safe to use in parallel)
   std::vector<std::shared_ptr<mpm::NodeBase<Tdim>>> node_ptrs;
-  node_ptrs.reserve(plate_boundary_nodes_set.size());
-  for (auto id : plate_boundary_nodes_set) {
+
+  // allocate memory
+  node_ptrs.reserve(nodes_to_sum.size());
+  for (auto id : nodes_to_sum) {
     auto it = map_nodes_.find(id);
     if (it != map_nodes_.end() && it->second) {
       node_ptrs.push_back(it->second);
     } else {
-      // helpful debug
+      // this prints if there is a node in nodes_to_sum that isn't in the current MPI rank
+      // this is the expected behavior but im leaving it here for debugging
       std::cerr << "Rank " << rank << " WARNING: node id " << id << " missing or null\n";
     }
   }
-
+  // now node_ptrs only includes the nodes in nodes_to_sum that also exist in the current MPI rank
 
   // make sure there is at least one boundary node before computing force
   if (!node_ptrs.empty()) {
@@ -3320,33 +3347,11 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigne
     #pragma omp parallel for reduction(+:acc0,acc1,acc2) schedule(runtime)
     for (size_t i = 0; i < node_ptrs.size(); i++) {
       const auto& node_ptr = node_ptrs[i];
-      // const auto& node_mpi_ranks = node_ptr->mpi_ranks();
-
-      // if (node_mpi_ranks.size() > 1) {
-      //   std::cout << "rank " << rank << ": node " << node_ptr->id() << " is in " << node_mpi_ranks.size() << " ranks" << std::endl;
-      // }
-
-      // // find how many submeshes w/ points each node belongs to
-      // unsigned n_ranks = 1;
-      // for (auto& x : node_mpi_ranks) {
-      //     if (neighbour_mesh_ids_with_points.find(x) != neighbour_mesh_ids_with_points.end()) {
-      //         n_ranks++;
-      //         std::cout << "node " << node_ptr->id() << " neighbor found" << std::endl;
-      //     }
-      // }
-      // double prefactor = (n_ranks <= 1) ? 1.0 : (static_cast<double>(n_ranks - 1) / n_ranks);
 
       auto node_force = node_ptr->internal_force(phase);
       acc0 += node_force[0];
       if (Tdim > 1) acc1 += node_force[1];
       if (Tdim > 2) acc2 += node_force[2];
-
-      // #pragma omp critical
-      // {
-      //     if (prefactor != 1) {
-      //       std::cout << "node " << node_ptr->id() << " has force " << node_force[0] << " " << node_force[1] << "with prefactor " << prefactor << std::endl;
-      //     }
-      // }
     }
 
     // combine accumulators into force_vec

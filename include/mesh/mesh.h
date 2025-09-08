@@ -896,6 +896,9 @@ class Mesh {
   //! Map of nodes for fast retrieval
   Map<NodeBase<Tdim>> map_nodes_;
 
+  //! RFT ONLY 
+  
+
   //! Map of cells for fast retrieval
   Map<Cell<Tdim>> map_cells_;
   //! Vector of cells
