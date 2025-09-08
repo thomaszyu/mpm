@@ -87,43 +87,43 @@ void mpm::PointDirichletPenalty<Tdim>::compute_updated_position(
   // copy-paste to chatgpt and ask it to remove duplicates for node id
   // TODO FIX THIS FOR 3D IF WE DO IT LATER (this only works for 2d)
 
-  int rank = 0;
-  #ifdef USE_MPI
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  #endif
+  // int rank = 0;
+  // #ifdef USE_MPI
+  //   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  // #endif
 
   
-  #pragma omp critical 
-  {
-    std::cout << rank << " 0 " << id_ << " " << std::setprecision(15) << coordinates_[0] << " " << coordinates_[1] << " 0 0" << std::endl; // output position??
+  // #pragma omp critical 
+  // {
+  //   std::cout << rank << " 0 " << id_ << " " << std::setprecision(15) << coordinates_[0] << " " << coordinates_[1] << " 0 0" << std::endl; // output position??
 
-  //   // 0 represents point
+  // //   // 0 represents point
 
-    for (unsigned i = 0; i < nodes_.size(); i++) {
+  //   for (unsigned i = 0; i < nodes_.size(); i++) {
 
-      // std::cout<<no
-      const auto& node_coords = nodes_[i]->coordinates() ;
-      const auto& node_internal_force = nodes_[i]->internal_force(phase);
-      double x_force = node_internal_force[0];
-      double y_force = node_internal_force[1];
+  //     // std::cout<<no
+  //     const auto& node_coords = nodes_[i]->coordinates() ;
+  //     const auto& node_internal_force = nodes_[i]->internal_force(phase);
+  //     double x_force = node_internal_force[0];
+  //     double y_force = node_internal_force[1];
 
-        std::cout << rank << " 1 " << nodes_[i]->id() << " " << std::setprecision(15) << node_coords[0] << " " << node_coords[1] << " " << x_force << " " << y_force << std::endl; // outputs force to terminal, matlab-friendly version
+  //       std::cout << rank << " 1 " << nodes_[i]->id() << " " << std::setprecision(15) << node_coords[0] << " " << node_coords[1] << " " << x_force << " " << y_force << std::endl; // outputs force to terminal, matlab-friendly version
 
-        // 1 represents node
+  //       // 1 represents node
 
-      //   // std::cout << nodes_[i]->id() << " " << x_force << std::endl; // this outputs fx to terminal, matlab-friendly version
+  //     //   // std::cout << nodes_[i]->id() << " " << x_force << std::endl; // this outputs fx to terminal, matlab-friendly version
 
-      // std::cout << “node_id: “ << nodes_[i]->id() << “ x-dir internal_force: ” << internal_force[0] << std::ends; // this outputs fx to terminal
+  //     // std::cout << “node_id: “ << nodes_[i]->id() << “ x-dir internal_force: ” << internal_force[0] << std::ends; // this outputs fx to terminal
 
-      // then sum over all unique ids, which becomes sigma f
-      // this is the force, but we divide over the area (can do this in paraview calculator in post)
-      // then compare this to the analytical solution to see how the accuracy compares
-      // if the accuracy is good, we don't need it
-      // this will give a lot of outputs, just check the steady state
+  //     // then sum over all unique ids, which becomes sigma f
+  //     // this is the force, but we divide over the area (can do this in paraview calculator in post)
+  //     // then compare this to the analytical solution to see how the accuracy compares
+  //     // if the accuracy is good, we don't need it
+  //     // this will give a lot of outputs, just check the steady state
 
-      // alternatively can just post process this in matlab
-    }
-  }
+  //     // alternatively can just post process this in matlab
+  //   }
+  // }
 }
 
 

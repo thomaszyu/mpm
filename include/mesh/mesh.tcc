@@ -3342,7 +3342,7 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigne
   // make sure there is at least one boundary node before computing force
   if (!node_ptrs.empty()) {
     double acc0 = 0.0, acc1 = 0.0, acc2 = 0.0;
-    std::cout << "rank " << rank << ": " << points_.size() << " points and " << node_ptrs.size() << " nodes" << std::endl;
+    // std::cout << "rank " << rank << ": " << points_.size() << " points and " << node_ptrs.size() << " nodes" << std::endl;
 
     #pragma omp parallel for reduction(+:acc0,acc1,acc2) schedule(runtime)
     for (size_t i = 0; i < node_ptrs.size(); i++) {

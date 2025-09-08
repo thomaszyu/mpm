@@ -165,7 +165,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
     output_steps_ = post_process_["output_steps"].template get<mpm::Index>();
 
   } catch (std::domain_error& domain_error) {
-    console_->error("{} {} Get analysis object: {}", __FILE__, __LINE__,
+    console_->error("{} #{}: Get analysis object \"{}\"", __FILE__, __LINE__,
                     domain_error.what());
     abort();
   }
@@ -179,18 +179,20 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
   vtk_particlevars_.insert(
       std::make_pair(mpm::VariableType::Tensor, std::vector<std::string>()));
 
-  if ((post_process_.find("vtk_particlevars") != post_process_.end()) &&
-      post_process_.at("vtk_particlevars").is_array() &&
-      post_process_.at("vtk_particlevars").size() > 0) {
-    // Iterate over vtk particle variables
-    for (unsigned i = 0; i < post_process_.at("vtk_particlevars").size(); ++i) {
+  if ((post_process_.find("vtk") != post_process_.end()) &&
+      post_process_.at("vtk").is_array() &&
+      post_process_.at("vtk").size() > 0) {
+    // Iterate over vtk
+    for (unsigned i = 0; i < post_process_.at("vtk").size(); ++i) {
       std::string attribute =
-          post_process_["vtk_particlevars"][i].template get<std::string>();
-      if (particle_variables.find(attribute) != particle_variables.end())
+          post_process_["vtk"][i].template get<std::string>();
+      if (attribute == "geometry")
+        geometry_vtk_ = true;
+      else if (particle_variables.find(attribute) != particle_variables.end())
         vtk_particlevars_[particle_variables.at(attribute)].emplace_back(attribute);
       else {
         console_->warn(
-            "{} #{}: VTK particle variable '{}' was specified, but is not available "
+            "{} #{}: VTK particle variable \"{}\" was specified, but is not available "
             "in variable list",
             __FILE__, __LINE__, attribute);
       }
@@ -201,7 +203,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
         __FILE__, __LINE__);
   }
 
-  // VTK state variables
+  // VTK particle state variables
   bool vtk_statevar = false;
   if ((post_process_.find("vtk_statevars") != post_process_.end()) &&
       post_process_.at("vtk_statevars").is_array() &&
@@ -230,8 +232,9 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
     console_->warn(
         "{} #{}: No VTK state variables were specified, none will be generated",
         __FILE__, __LINE__);
-
-
+  
+  
+  
   // VTK point variables
   // Initialise container with empty vector
   vtk_pointvars_.insert(
@@ -244,7 +247,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
   if ((post_process_.find("vtk_pointvars") != post_process_.end()) &&
       post_process_.at("vtk_pointvars").is_array() &&
       post_process_.at("vtk_pointvars").size() > 0) {
-    // Iterate over vtk point variables
+    // Iterate over vtk
     for (unsigned i = 0; i < post_process_.at("vtk_pointvars").size(); ++i) {
       std::string attribute =
           post_process_["vtk_pointvars"][i].template get<std::string>();
@@ -252,18 +255,16 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
         vtk_pointvars_[point_variables.at(attribute)].emplace_back(attribute);
       else {
         console_->warn(
-            "{} #{}: VTK point variable '{}' was specified, but is not available "
+            "{} #{}: VTK particle variable \"{}\" was specified, but is not available "
             "in variable list",
             __FILE__, __LINE__, attribute);
       }
     }
   } else {
     console_->warn(
-        "{} #{}: No VTK point variables were specified, none will be generated",
+        "{} #{}: No VTK particle variables were specified, none will be generated",
         __FILE__, __LINE__);
   }
-
-  
 
   // VTK node variables
   // Initialise container with empty map
@@ -274,7 +275,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
   if ((post_process_.find("vtk_nodevars") != post_process_.end()) &&
       post_process_.at("vtk_nodevars").is_array() &&
       post_process_.at("vtk_nodevars").size() > 0) {
-    // Iterate over vtk node variables (nvars)
+    // Iterate over node_vars
     for (const auto& nvars : post_process_["vtk_nodevars"]) {
       // Phase id
       unsigned phase_id = 0;
@@ -303,7 +304,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
             }
           } else {
             console_->warn(
-                "{} #{}: VTK node variable '{}' was specified, but is not available "
+                "{} #{}: VTK node variables '{}' was specified, but is not available "
                 " in variable list ",
                 __FILE__, __LINE__, attribute);
           }
@@ -315,6 +316,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
         "{} #{}: No VTK node variables were specified, none will be generated",
         __FILE__, __LINE__);
 }
+
 
 // Initialise mesh
 template <unsigned Tdim>
@@ -841,7 +843,6 @@ void mpm::MPMBase<Tdim>::write_vtk(mpm::Index step, mpm::Index max_steps) {
   //! Write VTK files for material and interface points
   this->write_vtk_particles(step, max_steps);
   this->write_vtk_points(step, max_steps);
-  this->write_vtk_nodes(step, max_steps);
 }
 
 //! Write VTK files for material points
@@ -1029,11 +1030,14 @@ void mpm::MPMBase<Tdim>::write_vtk_particles(mpm::Index step,
   }
 }
 
+
+
 //! Write VTK files for interface points
 template <unsigned Tdim>
 void mpm::MPMBase<Tdim>::write_vtk_points(mpm::Index step,
                                           mpm::Index max_steps) {
 
+  // VTK PolyData writer
   auto vtk_writer = std::make_unique<VtkWriter>(mesh_->point_coordinates(),
                                                 mesh_->nodal_coordinates(),
                                                 mesh_->cell_connectivity(true));
@@ -1058,7 +1062,7 @@ void mpm::MPMBase<Tdim>::write_vtk_points(mpm::Index step,
   MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 #endif
 
-  //! VTK point scalar variables
+  //! VTK scalar variables
   for (const auto& attribute : vtk_pointvars_.at(mpm::VariableType::Scalar)) {
     // Write scalar
     auto file = io_->output_file(attribute + "_point", extension, uuid_, step,
@@ -1081,7 +1085,7 @@ void mpm::MPMBase<Tdim>::write_vtk_points(mpm::Index step,
 #endif
   }
 
-  //! VTK point vector variables
+  //! VTK vector variables
   for (const auto& attribute : vtk_pointvars_.at(mpm::VariableType::Vector)) {
     // Write vector
     auto file = io_->output_file(attribute + "_point", extension, uuid_, step,
@@ -1104,7 +1108,7 @@ void mpm::MPMBase<Tdim>::write_vtk_points(mpm::Index step,
 #endif
   }
 
-  //! VTK point tensor variables
+  //! VTK tensor variables
   for (const auto& attribute : vtk_pointvars_.at(mpm::VariableType::Tensor)) {
     // Write vector
     auto file = io_->output_file(attribute + "_point", extension, uuid_, step,
