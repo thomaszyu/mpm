@@ -841,6 +841,7 @@ void mpm::MPMBase<Tdim>::write_vtk(mpm::Index step, mpm::Index max_steps) {
   //! Write VTK files for material and interface points
   this->write_vtk_particles(step, max_steps);
   this->write_vtk_points(step, max_steps);
+  this->write_vtk_nodes(step, max_steps);
 }
 
 //! Write VTK files for material points
