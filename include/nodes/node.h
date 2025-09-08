@@ -714,6 +714,7 @@ class Node : public NodeBase<Tdim> {
   Index active_id_{std::numeric_limits<Index>::max()};
   //! Global index for active node (globally)
   Index global_active_id_{std::numeric_limits<Index>::max()};
+  //! Map of scalar properties
   tsl::robin_map<std::string, std::function<double(unsigned)>>
       scalar_properties_;
   //! Map of vector properties

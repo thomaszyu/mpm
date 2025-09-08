@@ -19,6 +19,32 @@ mpm::Node<Tdim, Tdof, Tnphases>::Node(
   acceleration_constraints_.clear();
   concentrated_force_.setZero();
   this->initialise();
+
+  // Initialise scalar and vector properties
+  this->scalar_properties_["mass"] = [&](unsigned phase) {
+    return mass(phase);
+  };
+  this->scalar_properties_["volume"] = [&](unsigned phase) {
+    return volume(phase);
+  };
+  this->scalar_properties_["pressure"] = [&](unsigned phase) {
+    return pressure(phase);
+  };
+  this->vector_properties_["displacements"] = [&](unsigned phase) {
+    return displacement(phase);
+  };
+  this->vector_properties_["velocities"] = [&](unsigned phase) {
+    return velocity(phase);
+  };
+  this->vector_properties_["accelerations"] = [&](unsigned phase) {
+    return acceleration(phase);
+  };
+  this->vector_properties_["external_forces"] = [&](unsigned phase) {
+    return external_force(phase);
+  };
+  this->vector_properties_["internal_forces"] = [&](unsigned phase) {
+    return internal_force(phase);
+  };
 }
 
 //! Initialise nodal properties

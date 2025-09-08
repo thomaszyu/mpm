@@ -1674,7 +1674,7 @@ std::vector<Eigen::Matrix<double, 3, 1>>
   for (auto pitr = particles_.cbegin(); pitr != particles_.cend(); ++pitr) {
     Eigen::Vector3d coordinates;
     coordinates.setZero();
-    auto pcoords = (*pitr)->coordinates();
+    const auto& pcoords = (*pitr)->coordinates();
     // Fill coordinates to the size of dimensions
     for (unsigned i = 0; i < Tdim; ++i) coordinates(i) = pcoords(i);
     particle_coordinates.emplace_back(coordinates);
@@ -1784,8 +1784,7 @@ std::vector<Eigen::Matrix<double, 3, 1>> mpm::Mesh<Tdim>::points_vector_data(
     auto pdata = (*pitr)->vector_data(attribute);
     // Fill vector_data to the size of dimensions
     for (unsigned i = 0; i < pdata.size(); ++i) data(i) = pdata(i);
-
-    // Add to a tensor of data
+    // Add to a vector of data
     vector_data.emplace_back(data);
   }
   return vector_data;
@@ -2598,7 +2597,7 @@ std::vector<Eigen::Matrix<double, 3, 1>> mpm::Mesh<Tdim>::nodal_coordinates()
       // initialise coordinates
       Eigen::Matrix<double, 3, 1> node;
       node.setZero();
-      auto coords = (*nitr)->coordinates();
+      const auto& coords = (*nitr)->coordinates();
 
       for (unsigned i = 0; i < coords.size(); ++i) node(i) = coords(i);
 
@@ -2610,7 +2609,6 @@ std::vector<Eigen::Matrix<double, 3, 1>> mpm::Mesh<Tdim>::nodal_coordinates()
   }
   return coordinates;
 }
-
 
 //! Cell connectivity
 template <unsigned Tdim>
@@ -2645,7 +2643,6 @@ std::vector<std::vector<mpm::Index>> mpm::Mesh<Tdim>::cell_connectivity(
   }
   return cell_connectivity;
 }
-
 
 //! Cell node pairs
 template <unsigned Tdim>

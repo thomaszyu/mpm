@@ -239,6 +239,9 @@ class ParticleBase {
   //! Strain rate
   virtual Eigen::Matrix<double, 6, 1> strain_rate() const = 0;
 
+  //! Assign dvolumetric strain
+  virtual void assign_dvolumetric_strain(double dvol_strain) noexcept = 0;
+
   //! dvolumetric strain
   virtual double dvolumetric_strain() const = 0;
 
@@ -425,7 +428,8 @@ class ParticleBase {
 
   //! Compute stress using implicit updating scheme
   //! \ingroup Implicit
-  virtual void compute_stress_newmark() = 0;
+  //! \param[in] dt Analysis time step
+  virtual void compute_stress_newmark(double dt) = 0;
 
   //! Return previous stress
   virtual Eigen::Matrix<double, 6, 1> previous_stress() const = 0;
@@ -443,7 +447,8 @@ class ParticleBase {
 
   //! Update stress and strain after convergence of Newton-Raphson iteration
   //! \ingroup Implicit
-  virtual void update_stress_strain() = 0;
+  //! \param[in] dt Analysis time step
+  virtual void update_stress_strain(double dt) = 0;
 
   //! Assign acceleration to the particle (used for test)
   //! \ingroup Implicit
@@ -454,7 +459,8 @@ class ParticleBase {
   //! Function to reinitialise constitutive law to be run at the beginning of
   //! each time step
   //! \ingroup Implicit
-  virtual void initialise_constitutive_law() noexcept = 0;
+  //! \param[in] dt Analysis time step
+  virtual void initialise_constitutive_law(double dt) noexcept = 0;
 
   //! Return mapping matrix
   //! \ingroup AdvancedMapping
