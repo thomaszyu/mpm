@@ -266,56 +266,7 @@ mpm::MPMBase<Tdim>::MPMBase(const std::shared_ptr<IO>& io) : mpm::MPM(io) {
         __FILE__, __LINE__);
   }
 
-  // VTK node variables
-  // Initialise container with empty map
-  tsl::robin_map<unsigned, std::vector<std::string>> empty_map;
-  vtk_nodevars_.insert(std::make_pair(mpm::VariableType::Scalar, empty_map));
-  vtk_nodevars_.insert(std::make_pair(mpm::VariableType::Vector, empty_map));
-
-  if ((post_process_.find("vtk_nodevars") != post_process_.end()) &&
-      post_process_.at("vtk_nodevars").is_array() &&
-      post_process_.at("vtk_nodevars").size() > 0) {
-    // Iterate over node_vars
-    for (const auto& nvars : post_process_["vtk_nodevars"]) {
-      // Phase id
-      unsigned phase_id = 0;
-      if (nvars.contains("phase_id"))
-        phase_id = nvars.at("phase_id").template get<unsigned>();
-
-      // Node variables
-      if (nvars.at("nodevars").is_array() && nvars.at("nodevars").size() > 0) {
-        // Loop over nodevars and check type
-        for (unsigned i = 0; i < nvars.at("nodevars").size(); ++i) {
-          std::string attribute =
-              nvars["nodevars"][i].template get<std::string>();
-          if (node_variables.find(attribute) != node_variables.end()) {
-            // Inner map
-            auto& inner_map = vtk_nodevars_[node_variables.at(attribute)];
-
-            // Check if inner_map has phase_id
-            // If yes, emplace_back
-            if (inner_map.find(phase_id) != inner_map.end()) {
-              inner_map[phase_id].emplace_back(attribute);
-            }
-            // If not insert
-            else {
-              std::vector<std::string> v{attribute};
-              inner_map.insert(std::make_pair(phase_id, v));
-            }
-          } else {
-            console_->warn(
-                "{} #{}: VTK node variables '{}' was specified, but is not available "
-                " in variable list ",
-                __FILE__, __LINE__, attribute);
-          }
-        }
-      }
-    }
-  } else
-    console_->warn(
-        "{} #{}: No VTK node variables were specified, none will be generated",
-        __FILE__, __LINE__);
-
+  
   // VTK node variables
   // Initialise container with empty map
   tsl::robin_map<unsigned, std::vector<std::string>> empty_map;
