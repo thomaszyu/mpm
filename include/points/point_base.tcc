@@ -276,7 +276,7 @@ template <unsigned Tdim>
 bool mpm::PointBase<Tdim>::assign_area(double area) {
   bool status = true;
   try {
-    if (area <= 0.) throw std::runtime_error("Point area cannot be negative");
+    if (area < 0.) throw std::runtime_error("Point area cannot be negative");
     this->area_ = area;
   } catch (std::exception& exception) {
     console_->error("{} #{}: {}\n", __FILE__, __LINE__, exception.what());

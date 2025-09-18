@@ -3382,6 +3382,12 @@ template <unsigned Tdim>
 Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorDim& total_plate_force) {
   // NOTE THIS IS FOR 2D ONLY
 
+  int rank = 0;
+
+  #ifdef USE_MPI
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  #endif
+
   // compute front force
   VectorDim front_traction;
   front_traction.setZero();
@@ -3471,8 +3477,7 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
   //AND AREAS????
   // broadcast normal
 
-  int rank, size;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  int size;
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   // allreduce tractions
@@ -3506,26 +3511,37 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
   #endif
 
   // print statements for debugging
-  std::cout << "front traction " << front_traction << std::endl;
-  std::cout << "rear traction " << rear_traction << std::endl;
-  std::cout << "total area " << total_area << std::endl;
-  std::cout << "normal vector " << unified_normal_vector << std::endl;
+  if (rank == 0) {
+    std::cout << "front traction " << front_traction << std::endl;
+    std::cout << "rear traction " << rear_traction << std::endl;
+    std::cout << "total area " << total_area << std::endl;
+    std::cout << "normal vector " << unified_normal_vector << std::endl;
+  }
+  
 
   VectorDim shear_vector;
+  double norm = 0;
 
   // check normal vector has magnitude 1
   if (Tdim == 2) {
-    double norm = (normal_vector[0] * normal_vector[0]) + (normal_vector[1] * normal_vector[1]);
-    if (std::abs(norm - 1) > 1e-10) {
+    norm = (normal_vector[0] * normal_vector[0]) + (normal_vector[1] * normal_vector[1]);
+    double tol = 1e-10;
+    if (std::abs(norm - 1.0) > tol) {
       std::runtime_error("normal vector magnitude isnt 1");
     }
 
     // define shear vector
     shear_vector[0] = -normal_vector[1];
     shear_vector[1] = normal_vector[0];
-    std::cout << "shear vector " << shear_vector << std::endl;
+    
   } else {
     std::runtime_error("3d case not defined yet -- mesh.tcc compute_front_back");
+  }
+
+  // print statements for debugging
+  if (rank == 0) {
+    std::cout << "norm " << norm << std::endl;
+    std::cout << "shear vector " << shear_vector << std::endl;
   }
 
   // compute Fn, Fs
