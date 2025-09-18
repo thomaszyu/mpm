@@ -836,6 +836,10 @@ class Mesh {
   //! \retval plate_force Plate force vector
   VectorDim compute_plate_force(unsigned phase);
 
+  //! \ingroup RFT
+  //! \param[in] phase Material phase
+  Eigen::Matrix<double, Tdim, 2> compute_plate_front_back(VectorDim& total_plate_force);
+
 
   /**@}*/
 
@@ -895,9 +899,6 @@ class Mesh {
   Vector<NodeBase<Tdim>> active_nodes_;
   //! Map of nodes for fast retrieval
   Map<NodeBase<Tdim>> map_nodes_;
-
-  //! RFT ONLY 
-  
 
   //! Map of cells for fast retrieval
   Map<Cell<Tdim>> map_cells_;

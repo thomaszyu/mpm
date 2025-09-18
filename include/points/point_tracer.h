@@ -41,13 +41,15 @@ class PointTracer : public PointDirichletPenalty<Tdim> {
   //! Constructor with id and coordinates
   //! \param[in] id Point id
   //! \param[in] coord coordinates of the point
-  PointTracer(Index id, const VectorDim& coord);
+  //! \param[in] orientation Front or back of plate -- 1 if front, -1 if back
+  PointTracer(Index id, const VectorDim& coord, int orientation);
 
   //! Constructor with id, coordinates and status
   //! \param[in] id Point id
   //! \param[in] coord coordinates of the point
+  //! \param[in] orientation Front or back of plate -- 1 if front, -1 if back
   //! \param[in] status Point status (active / inactive)
-  PointTracer(Index id, const VectorDim& coord, bool status);
+  PointTracer(Index id, const VectorDim& coord, int orientation, bool status);
 
   //! Destructor
   ~PointTracer() override{};

@@ -543,17 +543,18 @@ void mpm::MPMImplicit<Tdim>::finalise_newton_raphson_iteration() {
 
   // RFT ONLY -- compute plate force (for 1 phase only)
   VectorDim plate_force = mesh_->compute_plate_force(phase_);
+  const auto& force_data = mesh_->compute_plate_front_back(plate_force);
 
   // Write force IO
   double curr_time = dt_ * step_; // curr time = dt * curr step
-  write_force(curr_time, plate_force);
+  write_force(curr_time, force_data);
 }
 
 
 // RFT ONLY -- write force output
 template <unsigned Tdim>
 void mpm::MPMImplicit<Tdim>::write_force(double time, 
-                                        const VectorDim& force_data) {
+                                        const Eigen::Matrix<double, Tdim, 2>& force_data) {
   // make sure outfile is only written to once
   int rank = 0;
   // get MPI rank if using MPI
@@ -564,18 +565,38 @@ void mpm::MPMImplicit<Tdim>::write_force(double time,
   // ensure that the output file is only written to once
   if (rank == 0) {
     std::string path = io_->working_dir();
-    path = path + io_->output_folder() + "force_data.txt";
+    front_path = path + io_->output_folder() + "force_data_front.txt";
+    rear_path = path + io_->output_folder() + "force_data_rear.txt";
 
-    std::ofstream outfile(path, std::ios::app); // append
+    // write to front
+    std::ofstream outfile(front_path, std::ios::app); // append
     if (!outfile) {
-      std::cerr << "Error opening file: " << path << "\n";
+      std::cerr << "Error opening file: " << front_path << "\n";
       return;
     }
 
+    VectorDim front_force_data = force_data.col(0);
     std::string output = std::to_string(time);
 
     for (unsigned i = 0; i < Tdim; i++) {
-      output = output + " " + std::to_string(force_data[i]);
+      output = output + " " + std::to_string(front_force_data[i]);
+    }
+
+    outfile << output << std::endl;  // append value to file
+    outfile.close();
+
+    // write to rear
+    std::ofstream outfile(rear_path, std::ios::app); // append
+    if (!outfile) {
+      std::cerr << "Error opening file: " << rear_path << "\n";
+      return;
+    }
+
+    VectorDim rear_force_data = force_data.col(1);
+    std::string output = std::to_string(time);
+
+    for (unsigned i = 0; i < Tdim; i++) {
+      output = output + " " + std::to_string(rear_force_data[i]);
     }
 
     outfile << output << std::endl;  // append value to file

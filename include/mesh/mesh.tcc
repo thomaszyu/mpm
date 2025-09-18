@@ -3298,7 +3298,7 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigne
     // compute displacements for Allgatherv
     std::vector<int> displacements(size);
     displacements[0] = 0;
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(runtime)
     for (int i = 1; i < size; i++) {
       displacements[i] = displacements[i-1] + recvcounts[i-1];
     }
@@ -3374,4 +3374,145 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigne
     std::cout << "global force " << global_force << std::endl;
   }
   return global_force;
+}
+
+//! FOR RFT
+// Compute the total front and back plate force
+template <unsigned Tdim>
+Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorDim& total_plate_force) {
+  // NOTE THIS IS FOR 2D ONLY
+
+  // compute front force
+  VectorDim front_traction;
+  front_traction.setZero();
+  
+  // TODO fix this for multiple plates, only one for now
+  this->iterate_over_point_set(
+        1, std::bind(&mpm::PointDirichletPenalty<Tdim>::compute_point_traction,
+                  std::placeholders::_1, &front_traction));
+  
+  // compute rear force
+  VectorDim rear_traction;
+  rear_traction.setZero();
+  
+  // TODO fix this for multiple plates, only one for now
+  this->iterate_over_point_set(
+        2, std::bind(&mpm::PointDirichletPenalty<Tdim>::compute_point_traction,
+                  std::placeholders::_1, &rear_traction));
+  
+  // compute total point area over set
+  double local_area = 0;
+
+  // TODO fix this for multiple plates, only one for now
+  this->iterate_over_point_set(
+        0, std::bind(&mpm::PointDirichletPenalty<Tdim>::add_point_area,
+                  std::placeholders::_1, &area));
+
+  // get local normal vector
+  VectorDim normal_vector;
+  normal_vector.setZero();
+
+  // find a point and extract its normal vector, if any points exist
+  int has_point = 0;
+  auto set = point_sets_.at(0);
+  #pragma omp parallel for schedule(runtime)
+  for (auto sitr = set.begin(); sitr != set.cend(); ++sitr) {
+    unsigned pid = (*sitr);
+    if (map_points_.find(pid) != map_points_.end()) {
+      auto& point = map_points_[pid];
+      if (point->status()) {
+        normal_vector = point->normal();
+        has_point = 1;
+        break;
+      }
+    }
+  }
+
+
+  // set up for MPI across all ranks
+  VectorDim total_front_traction;
+  total_front_traction.setZero();
+
+  VectorDim total_rear_traction; 
+  total_rear_traction.setZero();
+
+  double total_area = 0;
+
+  VectorDim unified_normal_vector;
+  unified_normal_vector.setZero();
+  
+
+  #ifdef USE_MPI
+  //TODO WRITE ALLREDUCE STATEMENTS for front and rear forces??? 
+  //AND AREAS????
+  // broadcast normal
+
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  // allreduce tractions
+  MPI_Allreduce(front_traction.data(), total_front_traction.data(), static_cast<int>(front_traction.size()), 
+      MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(rear_traction.data(), total_rear_traction.data(), static_cast<int>(rear_traction.size()), 
+      MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  
+  // allreduce areas
+  MPI_Allreduce(&local_area, &total_area, 1, 
+      MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+  // broadcast global normal vector
+  struct{ int flag; int rank; } in, out;
+  in.flag = has_point;
+  in.rank = rank;
+  MPI_Allreduce(&in, &out, 1, MPI_2INT, MPI_MAXLOC, MPI_COMM_WORLD);
+  int chosen_rank = out.rank;
+
+  if (rank == chosen_rank) {
+    unified_normal_vector = normal_vector;
+  }
+  MPI_Bcast(unified_normal_vector.data(), unified_normal_vector.size(), MPI_DOUBLE,
+    chosen_rank, MPI_COMM_WORLD);
+
+  #else
+    total_front_traction = front_traction;
+    total_rear_traction = rear_traction;
+    total_area = local_area;
+    unified_normal_vector = normal_vector; 
+  #endif
+
+  // check normal vector has magnitude 1
+  if (Tdim == 2) {
+    double norm = (normal_vector[0] * normal_vector[0]) + (normal_vector[1] * normal_vector[1]);
+    if (std::abs(norm - 1) > 1e-10) {
+      std::runtime_error('normal vector magnitude isnt 1')
+    }
+
+    // define shear vector
+    VectorDim shear_vector;
+    shear_vector[0] = -normal_vector[1];
+    shear_vector[1] = normal_vector[0];
+
+  } else {
+    std::runtime_error('3d case not defined yet -- mesh.tcc compute_front_bacl')
+  }
+
+  // compute Fn, Fs
+  double Fn = total_plate_force.dot(normal_vector);
+  double Fs = total_plate_force.dot(shear_vector);
+  
+  // compute Fnguess, Fsguess via A*(t+ - t-) dot n or s
+  double Fnguess = (total_area * (total_front_traction - total_rear_traction)).dot(normal_vector);
+  double Fsguess = (total_area * (total_front_traction - total_rear_traction)).dot(shear_vector);
+
+  // compute correction factors
+  double c1 = Fn / Fnguess;
+  double c2 = Fs / Fsguess;
+
+  // get forces
+  force_results = Eigen::Matrix<double, Tdim, 2>
+  force_results.col(0) = total_area * c1 * total_front_traction; // front force
+  force_results.col(1) = total_area * c2 * total_rear_traction;  // rear force
+
+  return force_results;
 }

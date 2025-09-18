@@ -70,7 +70,7 @@ void mpm::PointDirichletPenalty<Tdim>::apply_point_velocity_constraints(
     unsigned dir, double velocity) {
   // Set particle velocity constraint
   this->imposed_velocity_(dir) = velocity;
-  // Set normal vector
+  // Set normal vector if type is Cartesian
   if (normal_type_ == mpm::NormalType::Cartesian) this->normal_(dir) = 1.0;
 }
 
@@ -135,6 +135,32 @@ void mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set(
     for (unsigned i = 0; i < nodes_.size(); i++) {
       plate_boundary_node_set.insert(nodes_[i]->id());
     }
+}
+
+//! RFT ONLY -- Compute traction using normal vector
+template <unsigned Tdim>
+void mpm::PointDirichletPenalty<Tdim>::compute_point_traction(VectorDim& traction) {
+  
+  auto& traction = *traction;
+  // find smoothed stress
+  Eigen::Matrix<double, 6, 1> smoothed_stress;
+  smoothed_stress.setZero();
+  // Check if particle has a valid cell ptr
+  if (cell_ != nullptr) {
+    // Update point stress to interpolated nodal pressure
+    for (unsigned i = 0; i < this->nodes_.size(); ++i) {
+      smoothed_stress.noalias() += shapefn_[i] * nodes_[i]->stress(phase);
+    }
+  } else {
+    throw std::runtime_error("Smoothed stress calculation failed for tracer point.")
+  }
+
+  if (Tdim == 2) {
+    traction[0] += smoothed_stress[0] * normal_[0] + smoothed_stress[3] * normal[1];
+    traction[1] += smoothed_stress[1] * normal_[1] + smoothed_stress[3] * normal[0];
+  } else {
+    throw std::runtime_error("Haven't implemented 3d rft traction compute yet")
+  }
 }
 
 
@@ -280,7 +306,7 @@ std::vector<uint8_t> mpm::PointDirichletPenalty<Tdim>::serialize() {
 
 #ifdef USE_MPI
   // Type
-  int type = PointType.at(this->type());
+  int type = PointType.at(this->type();
   MPI_Pack(&type, 1, MPI_INT, data_ptr, data.size(), &position, MPI_COMM_WORLD);
 
   // ID

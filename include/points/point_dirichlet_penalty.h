@@ -74,6 +74,16 @@ class PointDirichletPenalty : public PointBase<Tdim> {
   //! \param[in] plate_boundary_node_set Set of boundary nodes to add to
   void add_boundary_nodes_to_set(std::set<mpm::Index> &plate_boundary_node_set);
 
+  //! RFT ONLY -- Compute traction using normal vector
+  void compute_point_traction(VectorDim& traction);
+
+  //! RFT ONLY -- Compute total area
+  void add_point_area(double& area) {
+    (*area) += this->area_;
+  };
+
+  //! Getter method for normal vector
+  VectorDim normal() { return normal_ }
   
   //! Map point stiffness matrix to cell
   inline bool map_stiffness_matrix_to_cell(double newmark_beta,

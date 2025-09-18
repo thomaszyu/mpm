@@ -35,18 +35,11 @@ mpm::PointTracer<Tdim>::PointTracer(Index id,
   console_ = std::make_unique<spdlog::logger>(logger, mpm::stdout_sink);
 }
 
-// Assign area to the point
+// Assign area to the point (always 0)
 template <unsigned Tdim>
 bool mpm::PointTracer<Tdim>::assign_area(double area) {
-  bool status = true;
-  try {
-    if (area < 0.) throw std::runtime_error("Point area cannot be negative");
-    this->area_ = area;
-  } catch (std::exception& exception) {
-    console_->error("{} #{}: {}\n", __FILE__, __LINE__, exception.what());
-    status = false;
-  }
-  return status;
+  this->area_ = 0.;
+  return true;
 }
 
 //! Apply point velocity constraints
