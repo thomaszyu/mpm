@@ -3505,6 +3505,12 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
     unified_normal_vector = normal_vector; 
   #endif
 
+  // print statements for debugging
+  std::cout << "front traction " << front_traction << std::endl;
+  std::cout << "rear traction " << rear_traction << std::endl;
+  std::cout << "total area " << total_area << std::endl;
+  std::cout << "normal vector " << unified_normal_vector << std::endl;
+
   VectorDim shear_vector;
 
   // check normal vector has magnitude 1
@@ -3517,7 +3523,7 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
     // define shear vector
     shear_vector[0] = -normal_vector[1];
     shear_vector[1] = normal_vector[0];
-
+    std::cout << "shear vector " << shear_vector << std::endl;
   } else {
     std::runtime_error("3d case not defined yet -- mesh.tcc compute_front_back");
   }

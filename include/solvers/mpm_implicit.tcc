@@ -543,6 +543,7 @@ void mpm::MPMImplicit<Tdim>::finalise_newton_raphson_iteration() {
 
   // RFT ONLY -- compute plate force (for 1 phase only)
   VectorDim plate_force = mesh_->compute_plate_force(phase_);
+  std::cout << "total plate force " << plate_force << std::endl;
   const auto& force_data = mesh_->compute_plate_front_back(plate_force);
 
   // Write force IO
