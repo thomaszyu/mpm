@@ -188,6 +188,17 @@ class PointBase {
       unsigned dir, double delta, double h_min, double incidence_a,
       double incidence_b) {};
   
+
+  //! RFT ONLY
+  virtual VectorDim compute_point_traction() { return Eigen::Matrix<double, Tdim, 1>::Zero(); }
+  
+  virtual VectorDim normal() { return Eigen::Matrix<double, Tdim, 1>::Zero(); }
+
+  virtual double area() { return 0; }
+
+
+
+
   //! Map point stiffness matrix to cell
   virtual inline bool map_stiffness_matrix_to_cell(double newmark_beta,
   double newmark_gamma, double dt) {

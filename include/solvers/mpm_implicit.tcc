@@ -565,12 +565,12 @@ void mpm::MPMImplicit<Tdim>::write_force(double time,
   // ensure that the output file is only written to once
   if (rank == 0) {
     std::string path = io_->working_dir();
-    front_path = path + io_->output_folder() + "force_data_front.txt";
-    rear_path = path + io_->output_folder() + "force_data_rear.txt";
+    std::string front_path = path + io_->output_folder() + "force_data_front.txt";
+    std::string rear_path = path + io_->output_folder() + "force_data_rear.txt";
 
     // write to front
-    std::ofstream outfile(front_path, std::ios::app); // append
-    if (!outfile) {
+    std::ofstream outfile_front(front_path, std::ios::app); // append
+    if (!outfile_front) {
       std::cerr << "Error opening file: " << front_path << "\n";
       return;
     }
@@ -582,25 +582,25 @@ void mpm::MPMImplicit<Tdim>::write_force(double time,
       output = output + " " + std::to_string(front_force_data[i]);
     }
 
-    outfile << output << std::endl;  // append value to file
-    outfile.close();
+    outfile_front << output << std::endl;  // append value to file
+    outfile_front.close();
 
     // write to rear
-    std::ofstream outfile(rear_path, std::ios::app); // append
-    if (!outfile) {
+    std::ofstream outfile_rear(rear_path, std::ios::app); // append
+    if (!outfile_rear) {
       std::cerr << "Error opening file: " << rear_path << "\n";
       return;
     }
 
     VectorDim rear_force_data = force_data.col(1);
-    std::string output = std::to_string(time);
+    output = std::to_string(time);
 
     for (unsigned i = 0; i < Tdim; i++) {
       output = output + " " + std::to_string(rear_force_data[i]);
     }
 
-    outfile << output << std::endl;  // append value to file
-    outfile.close();
+    outfile_rear << output << std::endl;  // append value to file
+    outfile_rear.close();
   }
   return;
 }

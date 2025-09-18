@@ -8,7 +8,7 @@ namespace mpm {
 std::map<std::string, int> PointType = {{"POINT2DDIRPEN", 0},
                                         {"POINT3DDIRPEN", 1},
                                         {"POINT2DKV", 2},
-                                        {"POINT3DKV", 3}
+                                        {"POINT3DKV", 3},
                                         {"POINT2DTRACER", 4}};
 std::map<int, std::string> PointTypeName = {{0, "POINT2DDIRPEN"},
                                             {1, "POINT3DDIRPEN"},
@@ -41,7 +41,7 @@ static Register<mpm::PointBase<3>, mpm::PointKelvinVoigt<3>, mpm::Index,
                 const Eigen::Matrix<double, 3, 1>&>
     point3dkv("POINT3DKV");
 
-// PointTracer2D (2 Dim)
-static Register<mpm::PointBase<2>, mpm::PointTracer<2>, mpm::Index,
-                const Eigen::Matrix<double, 2, 1>&>
-    point2dtracer("POINT2DTRACER");
+// // PointTracer2D (2 Dim)
+// static Register<mpm::PointBase<2>, mpm::PointTracer<2>, mpm::Index,
+//                 const Eigen::Matrix<double, 2, 1>&>
+//     point2dtracer("POINT2DTRACER");

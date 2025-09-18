@@ -72,7 +72,7 @@ class MPMImplicit : public MPMBase<Tdim> {
   //! FOR RFT ONLY
   //! Write plate force to file for RFT
   //! \ingroup Implicit
-  void write_force(double time, const VectorDim& force_data);
+  void write_force(double time, const Eigen::Matrix<double, Tdim, 2>& force_data);
 
   /**@}*/
 

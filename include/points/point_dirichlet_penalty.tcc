@@ -139,9 +139,10 @@ void mpm::PointDirichletPenalty<Tdim>::add_boundary_nodes_to_set(
 
 //! RFT ONLY -- Compute traction using normal vector
 template <unsigned Tdim>
-void mpm::PointDirichletPenalty<Tdim>::compute_point_traction(VectorDim& traction) {
+typename mpm::PointDirichletPenalty<Tdim>::VectorDim mpm::PointDirichletPenalty<Tdim>::compute_point_traction() {
   
-  auto& traction = *traction;
+  VectorDim traction;
+
   // find smoothed stress
   Eigen::Matrix<double, 6, 1> smoothed_stress;
   smoothed_stress.setZero();
@@ -149,18 +150,32 @@ void mpm::PointDirichletPenalty<Tdim>::compute_point_traction(VectorDim& tractio
   if (cell_ != nullptr) {
     // Update point stress to interpolated nodal pressure
     for (unsigned i = 0; i < this->nodes_.size(); ++i) {
-      smoothed_stress.noalias() += shapefn_[i] * nodes_[i]->stress(phase);
+      smoothed_stress.noalias() += shapefn_[i] * nodes_[i]->stress(0);
     }
   } else {
-    throw std::runtime_error("Smoothed stress calculation failed for tracer point.")
+    throw std::runtime_error("Smoothed stress calculation failed for tracer point.");
   }
 
   if (Tdim == 2) {
-    traction[0] += smoothed_stress[0] * normal_[0] + smoothed_stress[3] * normal[1];
-    traction[1] += smoothed_stress[1] * normal_[1] + smoothed_stress[3] * normal[0];
+    traction[0] = smoothed_stress[0] * normal_[0] + smoothed_stress[3] * normal_[1];
+    traction[1] = smoothed_stress[1] * normal_[1] + smoothed_stress[3] * normal_[0];
   } else {
-    throw std::runtime_error("Haven't implemented 3d rft traction compute yet")
+    throw std::runtime_error("Haven't implemented 3d rft traction compute yet");
   }
+
+  return traction;
+}
+
+//! RFT ONLY -- Get point area
+template<unsigned Tdim>
+double mpm::PointDirichletPenalty<Tdim>::area() {
+  return area_;
+}
+
+//! RFT only -- get normal vector
+template <unsigned Tdim>
+typename mpm::PointDirichletPenalty<Tdim>::VectorDim mpm::PointDirichletPenalty<Tdim>::normal() {
+  return normal_;
 }
 
 
@@ -306,7 +321,7 @@ std::vector<uint8_t> mpm::PointDirichletPenalty<Tdim>::serialize() {
 
 #ifdef USE_MPI
   // Type
-  int type = PointType.at(this->type();
+  int type = PointType.at(this->type());
   MPI_Pack(&type, 1, MPI_INT, data_ptr, data.size(), &position, MPI_COMM_WORLD);
 
   // ID

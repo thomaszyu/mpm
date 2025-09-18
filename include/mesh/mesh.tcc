@@ -3387,26 +3387,51 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
   front_traction.setZero();
   
   // TODO fix this for multiple plates, only one for now
-  this->iterate_over_point_set(
-        1, std::bind(&mpm::PointDirichletPenalty<Tdim>::compute_point_traction,
-                  std::placeholders::_1, &front_traction));
+  auto set1 = point_sets_.at(1);
+  #pragma omp parallel for schedule(runtime)
+  for (auto sitr = set1.begin(); sitr != set1.cend(); ++sitr) {
+    unsigned pid = (*sitr);
+    if (map_points_.find(pid) != map_points_.end()) {
+      const auto& point = map_points_[pid];
+      if (point->status()) {
+        front_traction += point->compute_point_traction();
+      }
+    }
+  }
   
   // compute rear force
   VectorDim rear_traction;
   rear_traction.setZero();
   
   // TODO fix this for multiple plates, only one for now
-  this->iterate_over_point_set(
-        2, std::bind(&mpm::PointDirichletPenalty<Tdim>::compute_point_traction,
-                  std::placeholders::_1, &rear_traction));
+  auto set2 = point_sets_.at(2);
+  #pragma omp parallel for schedule(runtime)
+  for (auto sitr = set2.begin(); sitr != set2.cend(); ++sitr) {
+    unsigned pid = (*sitr);
+    if (map_points_.find(pid) != map_points_.end()) {
+      const auto& point = map_points_[pid];
+      if (point->status()) {
+        rear_traction -= point->compute_point_traction();
+        // corresponds to T * (-n)
+      }
+    }
+  }
   
   // compute total point area over set
   double local_area = 0;
 
   // TODO fix this for multiple plates, only one for now
-  this->iterate_over_point_set(
-        0, std::bind(&mpm::PointDirichletPenalty<Tdim>::add_point_area,
-                  std::placeholders::_1, &area));
+  auto set = point_sets_.at(0);
+  #pragma omp parallel for schedule(runtime)
+  for (auto sitr = set.begin(); sitr != set.cend(); ++sitr) {
+    unsigned pid = (*sitr);
+    if (map_points_.find(pid) != map_points_.end()) {
+      const auto& point = map_points_[pid];
+      if (point->status()) {
+        local_area += point->area();
+      }
+    }
+  }
 
   // get local normal vector
   VectorDim normal_vector;
@@ -3414,16 +3439,15 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
 
   // find a point and extract its normal vector, if any points exist
   int has_point = 0;
-  auto set = point_sets_.at(0);
+  auto set0 = point_sets_.at(0);
   #pragma omp parallel for schedule(runtime)
-  for (auto sitr = set.begin(); sitr != set.cend(); ++sitr) {
+  for (auto sitr = set0.begin(); sitr != set0.cend(); ++sitr) {
     unsigned pid = (*sitr);
     if (map_points_.find(pid) != map_points_.end()) {
-      auto& point = map_points_[pid];
-      if (point->status()) {
+      const auto& point = map_points_[pid];
+      if (point->status() && (has_point==0)) {
         normal_vector = point->normal();
         has_point = 1;
-        break;
       }
     }
   }
@@ -3481,20 +3505,21 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
     unified_normal_vector = normal_vector; 
   #endif
 
+  VectorDim shear_vector;
+
   // check normal vector has magnitude 1
   if (Tdim == 2) {
     double norm = (normal_vector[0] * normal_vector[0]) + (normal_vector[1] * normal_vector[1]);
     if (std::abs(norm - 1) > 1e-10) {
-      std::runtime_error('normal vector magnitude isnt 1')
+      std::runtime_error("normal vector magnitude isnt 1");
     }
 
     // define shear vector
-    VectorDim shear_vector;
     shear_vector[0] = -normal_vector[1];
     shear_vector[1] = normal_vector[0];
 
   } else {
-    std::runtime_error('3d case not defined yet -- mesh.tcc compute_front_bacl')
+    std::runtime_error("3d case not defined yet -- mesh.tcc compute_front_back");
   }
 
   // compute Fn, Fs
@@ -3510,7 +3535,7 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
   double c2 = Fs / Fsguess;
 
   // get forces
-  force_results = Eigen::Matrix<double, Tdim, 2>
+  Eigen::Matrix<double, Tdim, 2> force_results;
   force_results.col(0) = total_area * c1 * total_front_traction; // front force
   force_results.col(1) = total_area * c2 * total_rear_traction;  // rear force
 
