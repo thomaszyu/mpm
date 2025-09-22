@@ -3566,8 +3566,8 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
   Eigen::Matrix<double, 2*Tdim, 1> force_results;
   force_results[0] = total_area * c1 * total_front_traction.dot(normal_vector); // front normal force
   force_results[1] = total_area * c2 * total_front_traction.dot(shear_vector); // front shear force
-  force_results[2] = total_area * c1 * total_rear_traction.dot(normal_vector); // front normal force
-  force_results[3] = total_area * c2 * total_rear_traction.dot(shear_vector); // front shear force
+  force_results[2] = total_area * c1 * total_rear_traction.dot(normal_vector); // rear normal force
+  force_results[3] = total_area * c2 * total_rear_traction.dot(shear_vector); // rear shear force
 
   return force_results;
 }

@@ -2148,23 +2148,22 @@ void mpm::MPMBase<Tdim>::point_velocity_constraints() {
               constraints.at("normal_type").template get<std::string>();
         Eigen::Matrix<double, Tdim, 1> normal =
             Eigen::Matrix<double, Tdim, 1>::Zero();
-        if (constraint_type != "fixed") {
-          if (constraints.contains("normal") &&
-              constraints.at("normal").is_array() &&
-              constraints.at("normal").size() == normal.size()) {
-            for (unsigned i = 0; i < normal.size(); ++i) {
-              normal[i] = constraints.at("normal").at(i);
-            }
-            normal_type = "assign";
-            std::cout << "assigned normal " << normal << std::endl; 
+  
+        if (constraints.contains("normal") &&
+            constraints.at("normal").is_array() &&
+            constraints.at("normal").size() == normal.size()) {
+          for (unsigned i = 0; i < normal.size(); ++i) {
+            normal[i] = constraints.at("normal").at(i);
           }
+          normal_type = "assign";
+          std::cout << "assigned normal " << normal << std::endl; 
+        }
 
-          if (normal_type == "auto") {
-            console_->error(
-                "#{}: Automatic normal computation has not been implemented. "
-                "Available options are \'cartesian\'(default) or \'assign\'.",
-                __LINE__);
-          }
+        if (normal_type == "auto") {
+          console_->error(
+              "#{}: Automatic normal computation has not been implemented. "
+              "Available options are \'cartesian\'(default) or \'assign\'.",
+              __LINE__);
         }
 
         // Add velocity constraint to mesh
