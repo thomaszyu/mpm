@@ -3379,7 +3379,7 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigne
 //! FOR RFT
 // Compute the total front and back plate force
 template <unsigned Tdim>
-Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorDim& total_plate_force) {
+Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(VectorDim& total_plate_force) {
   // NOTE THIS IS FOR 2D ONLY
 
   int rank = 0;
@@ -3399,9 +3399,7 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
     unsigned pid = (*sitr);
     if (map_points_.find(pid) != map_points_.end()) {
       const auto& point = map_points_[pid];
-      if (point->status()) {
-        front_traction += point->compute_point_traction();
-      }
+      front_traction += point->compute_point_traction();
     }
   }
   
@@ -3416,10 +3414,8 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
     unsigned pid = (*sitr);
     if (map_points_.find(pid) != map_points_.end()) {
       const auto& point = map_points_[pid];
-      if (point->status()) {
-        rear_traction -= point->compute_point_traction();
-        // corresponds to T * (-n)
-      }
+      rear_traction -= point->compute_point_traction();
+      // corresponds to T * (-n)
     }
   }
   
@@ -3512,12 +3508,13 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
 
   // print statements for debugging
   if (rank == 0) {
-    std::cout << "front traction " << front_traction << std::endl;
-    std::cout << "rear traction " << rear_traction << std::endl;
+    std::cout << "front traction " << total_front_traction << std::endl;
+    std::cout << "rear traction " << total_rear_traction << std::endl;
     std::cout << "total area " << total_area << std::endl;
     std::cout << "normal vector " << unified_normal_vector << std::endl;
   }
   
+  normal_vector = unified_normal_vector;
 
   VectorDim shear_vector;
   double norm = 0;
@@ -3547,19 +3544,30 @@ Eigen::Matrix<double, Tdim, 2> mpm::Mesh<Tdim>::compute_plate_front_back(VectorD
   // compute Fn, Fs
   double Fn = total_plate_force.dot(normal_vector);
   double Fs = total_plate_force.dot(shear_vector);
+
+  
   
   // compute Fnguess, Fsguess via A*(t+ - t-) dot n or s
-  double Fnguess = (total_area * (total_front_traction - total_rear_traction)).dot(normal_vector);
-  double Fsguess = (total_area * (total_front_traction - total_rear_traction)).dot(shear_vector);
+  double Fnguess = (total_area * (total_front_traction + total_rear_traction)).dot(normal_vector);
+  double Fsguess = (total_area * (total_front_traction + total_rear_traction)).dot(shear_vector);
+  
 
   // compute correction factors
   double c1 = Fn / Fnguess;
   double c2 = Fs / Fsguess;
 
+  if (rank == 0) {
+    std::cout << "force sanity check " << Fn << " " << Fs << std::endl;
+    std::cout << "force guesses " << Fnguess << " " << Fsguess << std::endl;
+    std::cout << "correction factors " << c1 << " " << c2 << std::endl;
+  }
+
   // get forces
-  Eigen::Matrix<double, Tdim, 2> force_results;
-  force_results.col(0) = total_area * c1 * total_front_traction; // front force
-  force_results.col(1) = total_area * c2 * total_rear_traction;  // rear force
+  Eigen::Matrix<double, 2*Tdim, 1> force_results;
+  force_results[0] = total_area * c1 * total_front_traction.dot(normal_vector); // front normal force
+  force_results[1] = total_area * c2 * total_front_traction.dot(shear_vector); // front shear force
+  force_results[2] = total_area * c1 * total_rear_traction.dot(normal_vector); // front normal force
+  force_results[3] = total_area * c2 * total_rear_traction.dot(shear_vector); // front shear force
 
   return force_results;
 }

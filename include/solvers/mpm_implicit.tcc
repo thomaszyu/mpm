@@ -253,6 +253,8 @@ bool mpm::MPMImplicit<Tdim>::solve() {
     // Calculate smoothed stresses after step convergence
     mpm_scheme_->stress_smoothing(phase_);
 
+    this->rft();
+
     // Write outputs
     this->write_outputs(this->step_ + 1);
   }
@@ -540,6 +542,11 @@ void mpm::MPMImplicit<Tdim>::finalise_newton_raphson_iteration() {
                                           
   // Particle stress, strain and volume
   mpm_scheme_->update_particle_stress_strain_volume();
+}
+
+//! RFT ONLY
+template <unsigned Tdim>
+void mpm::MPMImplicit<Tdim>::rft() {
 
   // RFT ONLY -- compute plate force (for 1 phase only)
   VectorDim plate_force = mesh_->compute_plate_force(phase_);
@@ -563,7 +570,7 @@ void mpm::MPMImplicit<Tdim>::finalise_newton_raphson_iteration() {
 // RFT ONLY -- write force output
 template <unsigned Tdim>
 void mpm::MPMImplicit<Tdim>::write_force(double time, 
-                                        const Eigen::Matrix<double, Tdim, 2>& force_data) {
+                                        const Eigen::Matrix<double, 2*Tdim, 1>& force_data) {
   // make sure outfile is only written to once
   int rank = 0;
   // get MPI rank if using MPI
@@ -584,12 +591,12 @@ void mpm::MPMImplicit<Tdim>::write_force(double time,
       return;
     }
 
-    VectorDim front_force_data = force_data.col(0);
     std::string output = std::to_string(time);
 
     for (unsigned i = 0; i < Tdim; i++) {
-      output = output + " " + std::to_string(front_force_data[i]);
-    }
+      output = output + " " + std::to_string(force_data[i]);
+    } // normal first, then shear 
+    // TODO FIX FOR 3D (2 shear components)
 
     outfile_front << output << std::endl;  // append value to file
     outfile_front.close();
@@ -601,12 +608,11 @@ void mpm::MPMImplicit<Tdim>::write_force(double time,
       return;
     }
 
-    VectorDim rear_force_data = force_data.col(1);
     output = std::to_string(time);
 
     for (unsigned i = 0; i < Tdim; i++) {
-      output = output + " " + std::to_string(rear_force_data[i]);
-    }
+      output = output + " " + std::to_string(force_data[Tdim+i]);
+    } // normal first, then shear
 
     outfile_rear << output << std::endl;  // append value to file
     outfile_rear.close();

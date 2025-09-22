@@ -150,11 +150,16 @@ typename mpm::PointDirichletPenalty<Tdim>::VectorDim mpm::PointDirichletPenalty<
   if (cell_ != nullptr) {
     // Update point stress to interpolated nodal pressure
     for (unsigned i = 0; i < this->nodes_.size(); ++i) {
+      // std::cout << "nodal stress " << nodes_[i]->stress(0) << std::endl;
       smoothed_stress.noalias() += shapefn_[i] * nodes_[i]->stress(0);
     }
   } else {
     throw std::runtime_error("Smoothed stress calculation failed for tracer point.");
   }
+
+  // std::cout << "stress computation" << std::endl;
+  // std::cout << "smoothed_stress " << smoothed_stress << std::endl;
+  // std::cout << "normal " << normal_ << std::endl;
 
   if (Tdim == 2) {
     traction[0] = smoothed_stress[0] * normal_[0] + smoothed_stress[3] * normal_[1];
@@ -163,6 +168,7 @@ typename mpm::PointDirichletPenalty<Tdim>::VectorDim mpm::PointDirichletPenalty<
     throw std::runtime_error("Haven't implemented 3d rft traction compute yet");
   }
 
+  // std::cout << "computed traction " << traction << std::endl;
   return traction;
 }
 

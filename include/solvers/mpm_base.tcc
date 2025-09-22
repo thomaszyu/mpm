@@ -2156,6 +2156,7 @@ void mpm::MPMBase<Tdim>::point_velocity_constraints() {
               normal[i] = constraints.at("normal").at(i);
             }
             normal_type = "assign";
+            std::cout << "assigned normal " << normal << std::endl; 
           }
 
           if (normal_type == "auto") {

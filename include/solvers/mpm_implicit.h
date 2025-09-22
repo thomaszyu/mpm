@@ -70,9 +70,14 @@ class MPMImplicit : public MPMBase<Tdim> {
   void finalise_newton_raphson_iteration();
 
   //! FOR RFT ONLY
+  // Do RFT-related operations
+  //! \ingroup Implicit
+  void rft();
+
+  //! FOR RFT ONLY
   //! Write plate force to file for RFT
   //! \ingroup Implicit
-  void write_force(double time, const Eigen::Matrix<double, Tdim, 2>& force_data);
+  void write_force(double time, const Eigen::Matrix<double, 2*Tdim, 1>& force_data);
 
   /**@}*/
 
