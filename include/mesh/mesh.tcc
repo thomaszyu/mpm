@@ -3391,6 +3391,7 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
   // compute front force
   VectorDim front_traction;
   front_traction.setZero();
+  unsigned front_numpoints = 0;
   
   // TODO fix this for multiple plates, only one for now
   auto set1 = point_sets_.at(1);
@@ -3400,12 +3401,14 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
     if (map_points_.find(pid) != map_points_.end()) {
       const auto& point = map_points_[pid];
       front_traction += point->compute_point_traction();
+      front_numpoints += 1;
     }
   }
   
   // compute rear force
   VectorDim rear_traction;
   rear_traction.setZero();
+  unsigned rear_numpoints = 0;
   
   // TODO fix this for multiple plates, only one for now
   auto set2 = point_sets_.at(2);
@@ -3415,6 +3418,7 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
     if (map_points_.find(pid) != map_points_.end()) {
       const auto& point = map_points_[pid];
       rear_traction -= point->compute_point_traction();
+      rear_numpoints += 1;
       // corresponds to T * (-n)
     }
   }
@@ -3458,9 +3462,11 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
   // set up for MPI across all ranks
   VectorDim total_front_traction;
   total_front_traction.setZero();
+  unsigned total_front_numpoints = 0;
 
   VectorDim total_rear_traction; 
   total_rear_traction.setZero();
+  unsigned total_rear_numpoints = 0;
 
   double total_area = 0;
 
@@ -3481,7 +3487,13 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
       MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(rear_traction.data(), total_rear_traction.data(), static_cast<int>(rear_traction.size()), 
       MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  
+
+  // allreduce numpoints
+  MPI_Allreduce(&front_numpoints &total_front_numpoints, 1, 
+      MPI_UNSIGNED, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&rear_numpoints &total_rear_numpoints, 1, 
+      MPI_UNSIGNED, MPI_SUM, MPI_COMM_WORLD);
+
   // allreduce areas
   MPI_Allreduce(&local_area, &total_area, 1, 
       MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -3501,15 +3513,19 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
 
   #else
     total_front_traction = front_traction;
+    total_front_numpoints = front_numpoints;
     total_rear_traction = rear_traction;
+    total_rear_numpoints = rear_numpoints;
     total_area = local_area;
     unified_normal_vector = normal_vector; 
   #endif
 
   // print statements for debugging
   if (rank == 0) {
-    std::cout << "front traction " << total_front_traction << std::endl;
-    std::cout << "rear traction " << total_rear_traction << std::endl;
+    std::cout << "front traction " << total_front_traction[0] << " " << total_front_traction[1] << std::endl;
+    std::cout << "front numpoints" << total_front_numpoints << std::endl;
+    std::cout << "rear traction " << total_rear_traction[0] << " " << total_rear_traction[1] << std::endl;
+    std::cout << "rear numpoints" << total_rear_numpoints << std::endl;
     std::cout << "total area " << total_area << std::endl;
     std::cout << "normal vector " << unified_normal_vector << std::endl;
   }
@@ -3538,36 +3554,50 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
   // print statements for debugging
   if (rank == 0) {
     std::cout << "norm " << norm << std::endl;
-    std::cout << "shear vector " << shear_vector << std::endl;
+    std::cout << "shear vector " << shear_vector[0] << " " << shear_vector[1] << std::endl;
   }
 
   // compute Fn, Fs
   double Fn = total_plate_force.dot(normal_vector);
   double Fs = total_plate_force.dot(shear_vector);
 
-  
-  
-  // compute Fnguess, Fsguess via A*(t+ - t-) dot n or s
-  double Fnguess = (total_area * (total_front_traction + total_rear_traction)).dot(normal_vector);
-  double Fsguess = (total_area * (total_front_traction + total_rear_traction)).dot(shear_vector);
+  VectorDim average_front_traction = total_front_traction / total_front_numpoints;
+  VectorDim average_rear_traction = total_rear_traction / total_rear_numpoints;
+
+  double Fn_front_guess = (total_area * total_front_traction).dot(normal_vector);
+  double Fs_front_guess = (total_area * total_front_traction).dot(shear_vector);
+  double Fn_rear_guess = (total_area * total_rear_traction).dot(normal_vector);
+  double Fs_rear_guess = (total_area * total_rear_traction).dot(shear_vector);
+  double Fn_total_guess = Fn_front_guess + Fn_rear_guess;
+  double Fs_total_guess = Fs_front_guess + Fs_rear_guess;
+
+  // // compute Fnguess, Fsguess via A*(t+ - t-) dot n or s
+  // double Fnguess = (total_area * (total_front_traction + total_rear_traction)).dot(normal_vector);
+  // double Fsguess = (total_area * (total_front_traction + total_rear_traction)).dot(shear_vector);
   
 
-  // compute correction factors
-  double c1 = Fn / Fnguess;
-  double c2 = Fs / Fsguess;
+  // // compute correction factors
+  // double c1 = Fn / Fnguess;
+  // double c2 = Fs / Fsguess;
 
   if (rank == 0) {
     std::cout << "force sanity check " << Fn << " " << Fs << std::endl;
-    std::cout << "force guesses " << Fnguess << " " << Fsguess << std::endl;
-    std::cout << "correction factors " << c1 << " " << c2 << std::endl;
+    std::cout << "force guesses " << Fn_total_guess << " " << Fs_total_guess << std::endl;
+    // std::cout << "correction factors " << c1 << " " << c2 << std::endl;
   }
 
   // get forces
   Eigen::Matrix<double, 2*Tdim, 1> force_results;
-  force_results[0] = total_area * c1 * total_front_traction.dot(normal_vector); // front normal force
-  force_results[1] = total_area * c2 * total_front_traction.dot(shear_vector); // front shear force
-  force_results[2] = total_area * c1 * total_rear_traction.dot(normal_vector); // rear normal force
-  force_results[3] = total_area * c2 * total_rear_traction.dot(shear_vector); // rear shear force
+  force_results[0] = Fn_front_guess;
+  force_results[1] = Fs_front_guess;
+  force_results[2] = Fn_rear_guess;
+  force_results[3] = Fs_rear_guess;
+
+
+  // force_results[0] = total_area * c1 * total_front_traction.dot(normal_vector); // front normal force
+  // force_results[1] = total_area * c2 * total_front_traction.dot(shear_vector); // front shear force
+  // force_results[2] = total_area * c1 * total_rear_traction.dot(normal_vector); // rear normal force
+  // force_results[3] = total_area * c2 * total_rear_traction.dot(shear_vector); // rear shear force
 
   return force_results;
 }
