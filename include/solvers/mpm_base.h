@@ -212,8 +212,9 @@ class MPMBase : public MPM {
   //! Particles cells
   //! \param[in] mesh_prop Mesh properties
   //! \param[in] particle_io Particle IO handle
-  void particles_cells(const Json& mesh_prop,
-                       const std::shared_ptr<mpm::IOMesh<Tdim>>& particle_io);
+  //! \retval particle cell data
+    std::vector<std::array<mpm::Index, 2>> particles_cells(
+        const Json& mesh_prop, const std::shared_ptr<mpm::IOMesh<Tdim>>& particle_io);
 
   //! Particles volumes
   //! \param[in] mesh_prop Mesh properties

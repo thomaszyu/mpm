@@ -495,6 +495,7 @@ void mpm::MPMBase<Tdim>::initialise_particles() {
   if (mesh_props.find("check_duplicates") != mesh_props.end())
     check_duplicates = mesh_props["check_duplicates"].template get<bool>();
 
+  std::cout << "generating particles" << std::endl;
   auto particles_gen_begin = std::chrono::steady_clock::now();
 
   // Get particles properties
@@ -524,7 +525,14 @@ void mpm::MPMBase<Tdim>::initialise_particles() {
   auto particle_io = Factory<mpm::IOMesh<Tdim>>::instance()->create(io_type);
 
   // Read and assign particles cells
-  this->particles_cells(mesh_props, particle_io);
+  auto particles_cells = this->particles_cells(mesh_props, particle_io);
+  std::cout << "done reading particles_cells" << std::endl;
+
+  // if particle cells not read correctly, calculate them
+  if (particles_cells.empty()) {
+    std::cout << "calculating particle cells on rank " << mpi_rank << std::endl;
+    particles_cells = mesh_->particles_cells();
+  }
 
   // Locate particles in cell
   auto unlocatable_particles = mesh_->locate_particles_mesh();
@@ -536,7 +544,7 @@ void mpm::MPMBase<Tdim>::initialise_particles() {
   // Write particles and cells to file
   particle_io->write_particles_cells(
       io_->output_file("particles-cells", ".txt", uuid_, 0, 0).string(),
-      mesh_->particles_cells());
+      particles_cells);
 
   auto particles_locate_end = std::chrono::steady_clock::now();
   console_->info("Rank {} Locate particles: {} ms", mpi_rank,
@@ -1851,29 +1859,42 @@ void mpm::MPMBase<Tdim>::cell_entity_sets(const Json& mesh_props,
 
 // Particles cells
 template <unsigned Tdim>
-void mpm::MPMBase<Tdim>::particles_cells(
+std::vector<std::array<mpm::Index, 2>> mpm::MPMBase<Tdim>::particles_cells(
     const Json& mesh_props,
     const std::shared_ptr<mpm::IOMesh<Tdim>>& particle_io) {
+      
+  std::vector<std::array<mpm::Index, 2>> particle_cells;  // will hold result
+
   try {
     if (mesh_props.find("particle_cells") != mesh_props.end()) {
       std::string fparticles_cells =
           mesh_props["particle_cells"].template get<std::string>();
 
       if (!io_->file_name(fparticles_cells).empty()) {
-        bool particles_cells =
-            mesh_->assign_particles_cells(particle_io->read_particles_cells(
-                io_->file_name(fparticles_cells)));
-        if (!particles_cells)
+        std::cout << "reading particle cells" <<  std::endl;
+        particle_cells = particle_io->read_particles_cells(
+            io_->file_name(fparticles_cells));
+
+        bool particles_cells_good =
+            mesh_->assign_particles_cells(particle_cells);
+            
+        if (!particles_cells_good) {
           throw std::runtime_error(
               "Particle cells are not properly assigned to particles");
+        }
       }
-    } else
+    } else {
       throw std::runtime_error("Particle cells JSON data not found");
+    }
 
   } catch (std::exception& exception) {
     console_->warn("#{}: Particle cells are undefined; {}", __LINE__,
                    exception.what());
+    particle_cells.clear();
+    // leave particle_cells empty if something went wrong
   }
+
+  return particle_cells;
 }
 
 // Particles volumes
@@ -2156,7 +2177,7 @@ void mpm::MPMBase<Tdim>::point_velocity_constraints() {
             normal[i] = constraints.at("normal").at(i);
           }
           normal_type = "assign";
-          std::cout << "assigned normal " << normal << std::endl; 
+          // std::cout << "assigned normal " << normal << std::endl; 
         }
 
         if (normal_type == "auto") {
