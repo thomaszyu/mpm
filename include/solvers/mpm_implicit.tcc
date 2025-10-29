@@ -559,7 +559,7 @@ void mpm::MPMImplicit<Tdim>::rft() {
   if (rank == 0) {
     std::cout << "total plate force " << plate_force << std::endl;
   }
-  const auto& force_data = mesh_->compute_plate_front_back(plate_force);
+  const auto& force_data = mesh_->compute_plate_outward_inward(plate_force);
 
   // Write force IO
   double curr_time = dt_ * step_; // curr time = dt * curr step
@@ -581,13 +581,13 @@ void mpm::MPMImplicit<Tdim>::write_force(double time,
   // ensure that the output file is only written to once
   if (rank == 0) {
     std::string path = io_->working_dir();
-    std::string front_path = path + io_->output_folder() + "force_data_front.txt";
-    std::string rear_path = path + io_->output_folder() + "force_data_rear.txt";
+    std::string outward_path = path + io_->output_folder() + "force_data_cartesian_outward.txt";
+    std::string inward_path = path + io_->output_folder() + "force_data_cartesian_inward.txt";
 
-    // write to front
-    std::ofstream outfile_front(front_path, std::ios::app); // append
-    if (!outfile_front) {
-      std::cerr << "Error opening file: " << front_path << "\n";
+    // write to outward
+    std::ofstream outfile_outward(outward_path, std::ios::app); // append
+    if (!outfile_outward) {
+      std::cerr << "Error opening file: " << outward_path << "\n";
       return;
     }
 
@@ -598,13 +598,13 @@ void mpm::MPMImplicit<Tdim>::write_force(double time,
     } // normal first, then shear 
     // TODO FIX FOR 3D (2 shear components)
 
-    outfile_front << output << std::endl;  // append value to file
-    outfile_front.close();
+    outfile_outward << output << std::endl;  // append value to file
+    outfile_outward.close();
 
-    // write to rear
-    std::ofstream outfile_rear(rear_path, std::ios::app); // append
-    if (!outfile_rear) {
-      std::cerr << "Error opening file: " << rear_path << "\n";
+    // write to inward
+    std::ofstream outfile_inward(inward_path, std::ios::app); // append
+    if (!outfile_inward) {
+      std::cerr << "Error opening file: " << inward_path << "\n";
       return;
     }
 
@@ -614,8 +614,8 @@ void mpm::MPMImplicit<Tdim>::write_force(double time,
       output = output + " " + std::to_string(force_data[Tdim+i]);
     } // normal first, then shear
 
-    outfile_rear << output << std::endl;  // append value to file
-    outfile_rear.close();
+    outfile_inward << output << std::endl;  // append value to file
+    outfile_inward.close();
   }
   return;
 }

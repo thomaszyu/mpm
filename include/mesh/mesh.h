@@ -838,7 +838,7 @@ class Mesh {
 
   //! \ingroup RFT
   //! \param[in] phase Material phase
-  Eigen::Matrix<double, 2*Tdim, 1> compute_plate_front_back(VectorDim& total_plate_force);
+  Eigen::Matrix<double, 2*Tdim, 1> compute_plate_outward_inward(VectorDim& total_plate_force);
 
 
   /**@}*/

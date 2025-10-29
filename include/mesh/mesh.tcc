@@ -3384,9 +3384,9 @@ typename mpm::Mesh<Tdim>::VectorDim mpm::Mesh<Tdim>::compute_plate_force(unsigne
 }
 
 //! FOR RFT
-// Compute the total front and back plate force
+// Compute the total outward and inward plate force
 template <unsigned Tdim>
-Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(VectorDim& total_plate_force) {
+Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_outward_inward(VectorDim& total_plate_force) {
   // NOTE THIS IS FOR 2D ONLY
 
   int rank = 0;
@@ -3395,10 +3395,10 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   #endif
 
-  // compute front force
-  VectorDim front_traction;
-  front_traction.setZero();
-  unsigned front_numpoints = 0;
+  // compute outward force
+  VectorDim outward_traction;
+  outward_traction.setZero();
+  unsigned outward_numpoints = 0;
   
   // TODO fix this for multiple plates, only one for now
   auto set1 = point_sets_.at(1);
@@ -3407,15 +3407,15 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
     unsigned pid = (*sitr);
     if (map_points_.find(pid) != map_points_.end()) {
       const auto& point = map_points_[pid];
-      front_traction += point->compute_point_traction();
-      front_numpoints += 1;
+      outward_traction += point->compute_point_traction();
+      outward_numpoints += 1;
     }
   }
   
-  // compute rear force
-  VectorDim rear_traction;
-  rear_traction.setZero();
-  unsigned rear_numpoints = 0;
+  // compute inward force
+  VectorDim inward_traction;
+  inward_traction.setZero();
+  unsigned inward_numpoints = 0;
   
   // TODO fix this for multiple plates, only one for now
   auto set2 = point_sets_.at(2);
@@ -3424,8 +3424,8 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
     unsigned pid = (*sitr);
     if (map_points_.find(pid) != map_points_.end()) {
       const auto& point = map_points_[pid];
-      rear_traction -= point->compute_point_traction();
-      rear_numpoints += 1;
+      inward_traction -= point->compute_point_traction();
+      inward_numpoints += 1;
       // corresponds to T * (-n)
     }
   }
@@ -3467,13 +3467,13 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
 
 
   // set up for MPI across all ranks
-  VectorDim total_front_traction;
-  total_front_traction.setZero();
-  unsigned total_front_numpoints = 0;
+  VectorDim total_outward_traction;
+  total_outward_traction.setZero();
+  unsigned total_outward_numpoints = 0;
 
-  VectorDim total_rear_traction; 
-  total_rear_traction.setZero();
-  unsigned total_rear_numpoints = 0;
+  VectorDim total_inward_traction; 
+  total_inward_traction.setZero();
+  unsigned total_inward_numpoints = 0;
 
   double total_area = 0;
 
@@ -3482,7 +3482,7 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
   
 
   #ifdef USE_MPI
-  //TODO WRITE ALLREDUCE STATEMENTS for front and rear forces??? 
+  //TODO WRITE ALLREDUCE STATEMENTS for outward and inward forces??? 
   //AND AREAS????
   // broadcast normal
 
@@ -3490,15 +3490,15 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   // allreduce tractions
-  MPI_Allreduce(front_traction.data(), total_front_traction.data(), static_cast<int>(front_traction.size()), 
+  MPI_Allreduce(outward_traction.data(), total_outward_traction.data(), static_cast<int>(outward_traction.size()), 
       MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(rear_traction.data(), total_rear_traction.data(), static_cast<int>(rear_traction.size()), 
+  MPI_Allreduce(inward_traction.data(), total_inward_traction.data(), static_cast<int>(inward_traction.size()), 
       MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
   // allreduce numpoints
-  MPI_Allreduce(&front_numpoints, &total_front_numpoints, 1, 
+  MPI_Allreduce(&outward_numpoints, &total_outward_numpoints, 1, 
       MPI_UNSIGNED, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(&rear_numpoints, &total_rear_numpoints, 1, 
+  MPI_Allreduce(&inward_numpoints, &total_inward_numpoints, 1, 
       MPI_UNSIGNED, MPI_SUM, MPI_COMM_WORLD);
 
   // allreduce areas
@@ -3519,20 +3519,20 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
     chosen_rank, MPI_COMM_WORLD);
 
   #else
-    total_front_traction = front_traction;
-    total_front_numpoints = front_numpoints;
-    total_rear_traction = rear_traction;
-    total_rear_numpoints = rear_numpoints;
+    total_outward_traction = outward_traction;
+    total_outward_numpoints = outward_numpoints;
+    total_inward_traction = inward_traction;
+    total_inward_numpoints = inward_numpoints;
     total_area = local_area;
     unified_normal_vector = normal_vector; 
   #endif
 
   // print statements for debugging
   if (rank == 0) {
-    std::cout << "front traction " << total_front_traction[0] << " " << total_front_traction[1] << std::endl;
-    std::cout << "front numpoints " << total_front_numpoints << std::endl;
-    std::cout << "rear traction " << total_rear_traction[0] << " " << total_rear_traction[1] << std::endl;
-    std::cout << "rear numpoints " << total_rear_numpoints << std::endl;
+    std::cout << "outward traction " << total_outward_traction[0] << " " << total_outward_traction[1] << std::endl;
+    std::cout << "outward numpoints " << total_outward_numpoints << std::endl;
+    std::cout << "inward traction " << total_inward_traction[0] << " " << total_inward_traction[1] << std::endl;
+    std::cout << "inward numpoints " << total_inward_numpoints << std::endl;
     std::cout << "total area " << total_area << std::endl;
     std::cout << "normal vector " << unified_normal_vector << std::endl;
   }
@@ -3548,61 +3548,56 @@ Eigen::Matrix<double, 2*Tdim, 1> mpm::Mesh<Tdim>::compute_plate_front_back(Vecto
     double tol = 1e-10;
     if (std::abs(norm - 1.0) > tol) {
       std::runtime_error("normal vector magnitude isnt 1");
-    }
-
-    // define shear vector
-    shear_vector[0] = -normal_vector[1];
-    shear_vector[1] = normal_vector[0];
-    
+    }    
   } else {
-    std::runtime_error("3d case not defined yet -- mesh.tcc compute_front_back");
+    std::runtime_error("3d case not defined yet -- mesh.tcc compute_outward_back");
   }
 
   // print statements for debugging
-  if (rank == 0) {
-    std::cout << "norm " << norm << std::endl;
-    std::cout << "shear vector " << shear_vector[0] << " " << shear_vector[1] << std::endl;
-  }
+  // if (rank == 0) {
+  //   std::cout << "norm " << norm << std::endl;
+  //   std::cout << "shear vector " << shear_vector[0] << " " << shear_vector[1] << std::endl;
+  // }
 
-  // compute Fn, Fs
-  double Fn = total_plate_force.dot(normal_vector);
-  double Fs = total_plate_force.dot(shear_vector);
+  VectorDim average_outward_traction = total_outward_traction / total_outward_numpoints;
+  VectorDim average_inward_traction = total_inward_traction / total_inward_numpoints;
 
-  VectorDim average_front_traction = total_front_traction / total_front_numpoints;
-  VectorDim average_rear_traction = total_rear_traction / total_rear_numpoints;
+  double Fx_outward_guess = (total_area * average_outward_traction)[0];
+  double Fy_outward_guess = (total_area * average_outward_traction)[1];
+  double Fx_inward_guess = (total_area * average_inward_traction)[0];
+  double Fy_inward_guess = (total_area * average_inward_traction)[1];
 
-  double Fn_front_guess = (total_area * average_front_traction).dot(normal_vector);
-  double Fs_front_guess = (total_area * average_front_traction).dot(shear_vector);
-  double Fn_rear_guess = (total_area * average_rear_traction).dot(normal_vector);
-  double Fs_rear_guess = (total_area * average_rear_traction).dot(shear_vector);
-  double Fn_total_guess = Fn_front_guess + Fn_rear_guess;
-  double Fs_total_guess = Fs_front_guess + Fs_rear_guess;
+  double Fx_total_guess = Fx_outward_guess + Fx_inward_guess;
+  double Fy_total_guess = Fy_outward_guess + Fy_inward_guess;
 
   // compute deltas between guess and actual, add half to each
   // "split the difference"
-  double normal_delta = Fn - Fn_total_guess;
-  double shear_delta = Fs - Fs_total_guess;
+  double Fx = total_plate_force[0];
+  double Fy = total_plate_force[1];
 
-  Fn_front_guess = Fn_front_guess + normal_delta/2;
-  Fn_rear_guess = Fn_rear_guess + normal_delta/2;
-  Fs_front_guess = Fs_front_guess + shear_delta/2;
-  Fs_rear_guess = Fs_rear_guess + shear_delta/2;
+  double Fx_delta = Fx - Fx_total_guess;
+  double Fy_delta = Fy - Fy_total_guess;
 
-  double Fn_total_corrected = Fn_front_guess + Fn_rear_guess;
-  double Fs_total_corrected = Fs_front_guess + Fs_rear_guess;
+  Fx_outward_guess = Fx_outward_guess + Fx_delta/2;
+  Fx_inward_guess = Fx_inward_guess + Fx_delta/2;
+  Fy_outward_guess = Fy_outward_guess + Fy_delta/2;
+  Fy_inward_guess = Fy_inward_guess + Fy_delta/2;
+
+  double Fx_total_corrected = Fx_outward_guess + Fx_inward_guess;
+  double Fy_total_corrected = Fy_outward_guess + Fy_inward_guess;
 
   if (rank == 0) {
-    std::cout << "force sanity check " << Fn << " " << Fs << std::endl;
-    std::cout << "force guesses " << Fn_total_guess << " " << Fs_total_guess << std::endl;
-    std::cout << "corrected forces " << Fn_total_corrected << " " << Fs_total_corrected << std::endl;
+    std::cout << "force sanity check " << Fx << " " << Fy << std::endl;
+    std::cout << "force guesses " << Fx_total_guess << " " << Fy_total_guess << std::endl;
+    std::cout << "corrected forces " << Fx_total_corrected << " " << Fy_total_corrected << std::endl;
   }
 
   // get forces
   Eigen::Matrix<double, 2*Tdim, 1> force_results;
-  force_results[0] = Fn_front_guess;
-  force_results[1] = Fs_front_guess;
-  force_results[2] = Fn_rear_guess;
-  force_results[3] = Fs_rear_guess;
+  force_results[0] = Fx_outward_guess;
+  force_results[1] = Fy_outward_guess;
+  force_results[2] = Fx_inward_guess;
+  force_results[3] = Fy_inward_guess;
 
   return force_results;
 }
